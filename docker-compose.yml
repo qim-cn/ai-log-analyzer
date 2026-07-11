@@ -1,0 +1,85 @@
+version: "3.8"
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # 使用宿主机网络，让容器能访问本地网络（WebDAV 服务器等）
+    network_mode: "host"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=/data/app.db
+      - LOG_STORAGE_PATH=/data/logs
+      - MAX_FILE_SIZE_MB=50
+      - MAX_CONTEXT_TOKENS=8000
+      # 本地知识库路径（容器内挂载点）
+      - OBSIDIAN_LOCAL_PATH=/vault
+    volumes:
+      - app-data:/data
+      # 挂载 Obsidian Vault 到容器内 /vault 目录（知识库本地模式）
+      # 方式1：直接挂载 SMB 共享
+      - '//192.168.31.5/Obsidian Vault:/vault'
+      # 方式2：如果方式1失败，在 Windows 上先映射网络驱动器：
+      #  net use Z: \\192.168.31.5\Obsidian Vault
+      #  然后替换上面行为：- 'Z:/:/vault'
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./backend/grafana/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./backend/grafana/dashboard.json:/etc/grafana/provisioning/dashboards/dashboard.json
+    restart: unless-stopped
+    networks:
+      - app-network
+    depends_on:
+      - prometheus
+
+volumes:
+  app-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  app-network:
+    driver: bridge
