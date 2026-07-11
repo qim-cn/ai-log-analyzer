@@ -1,0 +1,51 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Node
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.uv/
+
+# Database / Data
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/logs/
+data/uploads/
+chroma_db/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Claude
+.claudian/
+**/.claudian/
+
+# Obsidian
+.obsidian/
+**/.trash/
+
+# Sub-project (ai-log-analyzer has its own repo)
+ai-log-analyzer/
