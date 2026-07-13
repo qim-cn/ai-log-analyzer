@@ -77,9 +77,6 @@ async def lifespan(app: FastAPI):
     Path(settings.log_storage_path).mkdir(parents=True, exist_ok=True)
     init_database()
 
-    # 初始化默认管理员
-    auth_service.init_default_admin()
-
     # 初始化模板表
     from app.services.template_service import init_templates_table
     init_templates_table()
@@ -99,7 +96,7 @@ async def lifespan(app: FastAPI):
     # 迁移：将没有 user_id 的会话归属管理员
     from app.config.database import get_connection
     from app.repositories.user_repository import user_repository
-    admin = user_repository.get_by_username("qim")
+    admin = user_repository.get_first_admin()
     if admin:
         conn = get_connection()
         conn.execute(

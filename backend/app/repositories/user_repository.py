@@ -73,6 +73,17 @@ class UserRepository:
         row = conn.execute("SELECT COUNT(*) as cnt FROM users").fetchone()
         return row["cnt"]
 
+    def get_first_admin(self) -> User | None:
+        """获取第一个管理员用户（用于数据迁移）"""
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT * FROM users WHERE role = ? ORDER BY created_at ASC LIMIT 1",
+            (UserRole.ADMIN.value,),
+        ).fetchone()
+        if row is None:
+            return None
+        return User.from_row(dict(row))
+
     def update_password(self, user_id: str, password_hash: str) -> bool:
         """更新密码"""
         conn = get_connection()
