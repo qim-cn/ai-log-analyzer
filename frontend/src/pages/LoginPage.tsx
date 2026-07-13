@@ -2,7 +2,7 @@
  * 登录页面
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LogIn, Loader2 } from 'lucide-react';
 import { authService } from '@/services/authService';
 import { cn } from '@/utils';
@@ -12,10 +12,21 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
+  const [isFirstTime, setIsFirstTime] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // 首次访问时检测是否已有管理员
+  useEffect(() => {
+    authService.checkSetup().then((res) => {
+      setIsFirstTime(res.needsSetup);
+    }).catch(() => {
+      // 静默失败，保持普通登录模式
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,13 +37,30 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       return;
     }
 
+    if (isFirstTime && password !== confirmPassword) {
+      setError('两次输入的密码不一致');
+      return;
+    }
+
     setLoading(true);
     try {
-      const data = await authService.login(username, password);
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      onLogin(data.token, data.user);
+      const data = isFirstTime
+        ? await authService.setup(username, password)
+        : await authService.login(username, password);
+
+      // 设置模式没有 token，创建成功后自动登录
+      if (isFirstTime) {
+        const loginData = await authService.login(username, password);
+        localStorage.setItem('token', loginData.token);
+        localStorage.setItem('user', JSON.stringify(loginData.user));
+        onLogin(loginData.token, loginData.user);
+      } else {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        onLogin(data.token, data.user);
+      }
     } catch (err) {
+      console.error('[LoginPage]', err);
       setError(err instanceof Error ? err.message : '登录失败');
     } finally {
       setLoading(false);
@@ -51,7 +79,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             AI Log Analyzer
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            服务器日志智能分析系统
+            {isFirstTime ? '首次使用，请创建管理员账号' : '服务器日志智能分析系统'}
           </p>
         </div>
 
@@ -63,7 +91,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="输入用户名"
+              placeholder={isFirstTime ? '设置管理员用户名' : '输入用户名'}
               autoComplete="username"
               className={cn(
                 'w-full px-4 py-2.5 rounded-xl border border-input bg-background text-sm',
@@ -75,13 +103,15 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           </div>
 
           <div>
-            <label className="text-sm font-medium mb-1.5 block">密码</label>
+            <label className="text-sm font-medium mb-1.5 block">
+              {isFirstTime ? '设置密码' : '密码'}
+            </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="输入密码"
-              autoComplete="current-password"
+              placeholder={isFirstTime ? '设置密码（至少6位）' : '输入密码'}
+              autoComplete={isFirstTime ? 'new-password' : 'current-password'}
               className={cn(
                 'w-full px-4 py-2.5 rounded-xl border border-input bg-background text-sm',
                 'placeholder:text-muted-foreground/50',
@@ -90,6 +120,25 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               )}
             />
           </div>
+
+          {isFirstTime && (
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">确认密码</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="再次输入密码"
+                autoComplete="new-password"
+                className={cn(
+                  'w-full px-4 py-2.5 rounded-xl border border-input bg-background text-sm',
+                  'placeholder:text-muted-foreground/50',
+                  'focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50',
+                  'transition-all duration-150'
+                )}
+              />
+            </div>
+          )}
 
           {error && (
             <div className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">
@@ -110,12 +159,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <Loader2 size={16} className="animate-spin" />
-                登录中...
+                {isFirstTime ? '创建中...' : '登录中...'}
               </span>
             ) : (
               <span className="flex items-center justify-center gap-2">
                 <LogIn size={16} />
-                登录
+                {isFirstTime ? '创建管理员账号' : '登录'}
               </span>
             )}
           </button>
