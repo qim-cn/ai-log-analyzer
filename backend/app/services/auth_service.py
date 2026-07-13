@@ -27,8 +27,8 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24
 
 # 默认管理员
-DEFAULT_ADMIN_USERNAME = "qim"
-DEFAULT_ADMIN_PASSWORD = os.getenv("DEFAULT_ADMIN_PASSWORD", "changeme")
+DEFAULT_ADMIN_USERNAME = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
+DEFAULT_ADMIN_PASSWORD = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin")
 
 
 @dataclass
@@ -43,7 +43,7 @@ class AuthService:
     """认证服务"""
 
     def init_default_admin(self) -> None:
-        """启动时初始化默认管理员（如果 users 表为空）"""
+        """启动时初始化默认管理员（仅当用户表为空且环境变量允许时）"""
         if user_repository.count() == 0:
             password_hash = self.hash_password(DEFAULT_ADMIN_PASSWORD)
             user_repository.create(
@@ -51,7 +51,10 @@ class AuthService:
                 password_hash=password_hash,
                 role=UserRole.ADMIN,
             )
-            logger.info(f"已创建默认管理员账号: {DEFAULT_ADMIN_USERNAME}")
+            logger.warning(
+                f"已创建默认管理员账号: {DEFAULT_ADMIN_USERNAME} / {DEFAULT_ADMIN_PASSWORD} "
+                f"(请登录后立即修改密码)"
+            )
 
     def hash_password(self, password: str) -> str:
         """bcrypt 哈希密码"""

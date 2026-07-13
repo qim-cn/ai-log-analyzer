@@ -20,9 +20,13 @@ function clearAuth() {
   localStorage.removeItem('user');
 }
 
+interface RequestOptions extends Omit<RequestInit, 'body'> {
+  body?: Record<string, unknown>;
+}
+
 async function request<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestOptions = {}
 ): Promise<T> {
   const url = `${BASE_URL}${path}`;
   const token = getToken();
@@ -36,9 +40,14 @@ async function request<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  const body = options.body ? JSON.stringify(options.body) : undefined;
+
+  console.log('[http.request]', options.method || 'GET', url, options.body || null);
+
   const response = await fetch(url, {
     ...options,
     headers,
+    body,
   });
 
   // 401 → 清除 token，跳转登录
@@ -49,8 +58,9 @@ async function request<T>(
   }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: '请求失败' }));
-    throw new Error(error.message || `HTTP ${response.status}`);
+    const error = await response.json().catch(() => ({ message: `HTTP ${response.status}` }));
+    console.error('[http.request] error', response.status, error);
+    throw new Error(error.message || error.detail || `HTTP ${response.status}`);
   }
 
   const result: ApiResponse<T> = await response.json();
@@ -68,13 +78,13 @@ export const http = {
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: 'POST',
-      body: body ? JSON.stringify(body) : undefined,
+      body: body as Record<string, unknown>,
     }),
 
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: 'PUT',
-      body: body ? JSON.stringify(body) : undefined,
+      body: body as Record<string, unknown>,
     }),
 
   delete: <T>(path: string) =>
