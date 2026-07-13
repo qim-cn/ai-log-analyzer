@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # 不需要认证的路径
 PUBLIC_PATHS = {
     "/api/auth/login",
+    "/api/auth/setup",
     "/api/health",
     "/metrics",
 }
