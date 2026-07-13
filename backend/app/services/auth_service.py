@@ -20,8 +20,8 @@ from app.repositories.user_repository import user_repository
 logger = logging.getLogger(__name__)
 
 # JWT 配置
-JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production")
-if JWT_SECRET == "ai-log-analyzer-secret-key-change-in-production":
+JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production-please-set-your-own-secret-key")
+if JWT_SECRET == "change-me-in-production-please-set-your-own-secret-key":
     logger.warning("WARNING: 使用默认 JWT_SECRET，生产环境请设置环境变量 JWT_SECRET！")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24
