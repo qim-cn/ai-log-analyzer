@@ -68,6 +68,15 @@ class Settings:
         default_factory=lambda: int(os.getenv("MAX_CONTEXT_TOKENS", "8000"))
     )
 
+    # CORS 允许的源
+    allowed_origins: list[str] = field(
+        default_factory=lambda: [
+            origin.strip()
+            for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")
+            if origin.strip()
+        ]
+    )
+
     # 日志存储路径
     log_storage_path: str = "/data/logs"
 

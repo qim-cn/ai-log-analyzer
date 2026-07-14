@@ -128,11 +128,12 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.allowed_origins,
+    allow_credentials=("*" not in settings.allowed_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )
+logger.info(f"CORS allowed origins: {settings.allowed_origins}")
 
 # JWT 认证
 app.add_middleware(AuthMiddleware)

@@ -9,7 +9,9 @@ import logging
 from fastapi import APIRouter, Request, UploadFile
 
 from app.config.database import get_connection
+from app.middlewares.error_handler import ValidationError
 from app.models.user import UserRole
+from app.repositories.log_repository import log_repository
 from app.repositories.session_repository import session_repository
 from app.services.cluster_service import cluster_service
 from app.services.knowledge_graph import knowledge_graph
@@ -26,6 +28,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _require_session_owner(session_id: str, user) -> None:
+    """校验当前用户是否拥有会话访问/修改权限"""
+    session = session_repository.get_by_id(session_id)
+    if session is None:
+        raise ValidationError("会话不存在")
+    if user.role != UserRole.ADMIN and session.user_id is not None and session.user_id != user.id:
+        raise ValidationError("无权访问此会话")
+
+
+def _require_log_owner(log_id: str, user) -> None:
+    """校验当前用户是否拥有日志文件访问/修改权限"""
+    lf = log_repository.get_by_id(log_id)
+    if lf is None:
+        raise ValidationError("日志文件不存在")
+    _require_session_owner(lf.session_id, user)
+
+
 @router.post("/upload", response_model=dict)
 async def upload_log(session_id: str, file: UploadFile, request: Request):
     """
@@ -39,12 +58,7 @@ async def upload_log(session_id: str, file: UploadFile, request: Request):
     - 自动提取知识图谱实体
     """
     # 会话所有权校验
-    session = session_repository.get_by_id(session_id)
-    if session is None:
-        from app.middlewares.error_handler import ValidationError
-        raise ValidationError("会话不存在")
-    if session.user_id is not None and session.user_id != request.state.user.id and request.state.user.role != UserRole.ADMIN:
-        raise ValidationError("无权访问此会话")
+    _require_session_owner(session_id, request.state.user)
 
     content = await file.read()
     log_file = log_service.upload_log(
@@ -97,8 +111,9 @@ async def upload_log(session_id: str, file: UploadFile, request: Request):
 
 
 @router.get("/{session_id}", response_model=dict)
-async def list_logs(session_id: str):
+async def list_logs(session_id: str, request: Request):
     """获取会话下的日志文件列表"""
+    _require_session_owner(session_id, request.state.user)
     files = log_service.get_logs_by_session(session_id)
     return {
         "code": 0,
@@ -124,7 +139,7 @@ async def list_logs(session_id: str):
 
 
 @router.get("/{log_id}/statistics", response_model=dict)
-async def get_log_statistics(log_id: str):
+async def get_log_statistics(log_id: str, request: Request):
     """
     获取日志文件的详细统计信息
 
@@ -135,6 +150,7 @@ async def get_log_statistics(log_id: str):
     - 错误类型分布
     - 关键告警列表
     """
+    _require_log_owner(log_id, request.state.user)
     stats = log_service.get_log_statistics(log_id)
     return {
         "code": 0,
@@ -155,16 +171,15 @@ async def get_log_statistics(log_id: str):
 
 
 @router.get("/{log_id}/clusters", response_model=dict)
-async def get_log_clusters(log_id: str):
+async def get_log_clusters(log_id: str, request: Request):
     """
     获取日志错误聚类
 
     返回：[{pattern, count, samples[], level}]
     """
-    from app.repositories.log_repository import log_repository
+    _require_log_owner(log_id, request.state.user)
     lf = log_repository.get_by_id(log_id)
     if lf is None:
-        from app.middlewares.error_handler import ValidationError
         raise ValidationError("日志文件不存在")
 
     content = log_service.get_log_content(lf)
@@ -178,15 +193,13 @@ async def get_log_clusters(log_id: str):
 
 
 @router.get("/{log_id}/similar", response_model=dict)
-async def find_similar_logs(log_id: str, limit: int = 5):
+async def find_similar_logs(log_id: str, limit: int = 5, request: Request):
     """
     查找相似的历史日志
 
     返回 limit 个相似日志，包含相似度分数、摘要和解决方案
     """
-    from app.repositories.log_repository import log_repository
-    from app.middlewares.error_handler import ValidationError
-
+    _require_log_owner(log_id, request.state.user)
     lf = log_repository.get_by_id(log_id)
     if lf is None:
         raise ValidationError("日志文件不存在")
@@ -231,8 +244,9 @@ async def find_similar_logs(log_id: str, limit: int = 5):
 
 
 @router.delete("/{log_id}", response_model=dict)
-async def delete_log(log_id: str):
+async def delete_log(log_id: str, request: Request):
     """删除日志文件（同时删除磁盘文件）"""
+    _require_log_owner(log_id, request.state.user)
     # 删除向量嵌入
     await vector_store.delete_log(log_id)
     # 删除日志文件
