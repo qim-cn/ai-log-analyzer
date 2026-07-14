@@ -52,7 +52,7 @@ class AuthService:
                 role=UserRole.ADMIN,
             )
             logger.warning(
-                f"已创建默认管理员账号: {DEFAULT_ADMIN_USERNAME} / {DEFAULT_ADMIN_PASSWORD} "
+                f"已创建默认管理员账号: {DEFAULT_ADMIN_USERNAME} "
                 f"(请登录后立即修改密码)"
             )
 

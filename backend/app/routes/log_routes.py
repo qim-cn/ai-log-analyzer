@@ -9,6 +9,8 @@ import logging
 from fastapi import APIRouter, Request, UploadFile
 
 from app.config.database import get_connection
+from app.models.user import UserRole
+from app.repositories.session_repository import session_repository
 from app.services.cluster_service import cluster_service
 from app.services.knowledge_graph import knowledge_graph
 from app.services.log_service import log_service
@@ -20,8 +22,6 @@ from app.types.log_types import (
 )
 
 logger = logging.getLogger(__name__)
-
-from app.repositories.session_repository import session_repository
 
 router = APIRouter()
 
@@ -42,9 +42,9 @@ async def upload_log(session_id: str, file: UploadFile, request: Request):
     session = session_repository.get_by_id(session_id)
     if session is None:
         from app.middlewares.error_handler import ValidationError
-        raise ValidationError(会话不存在)
-    if session.user_id is not None and session.user_id != request.state.user.id and request.state.user.role.value != admin:
-        raise ValidationError(无权访问此会话, 403)
+        raise ValidationError("会话不存在")
+    if session.user_id is not None and session.user_id != request.state.user.id and request.state.user.role != UserRole.ADMIN:
+        raise ValidationError("无权访问此会话")
 
     content = await file.read()
     log_file = log_service.upload_log(

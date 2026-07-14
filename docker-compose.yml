@@ -26,15 +26,14 @@ services:
       - DATABASE_PATH=/data/app.db
       - LOG_STORAGE_PATH=/data/logs
       - MAX_FILE_SIZE_MB=50
-      - MAX_CONTEXT_TOKENS=8000
-      # 本地知识库路径（容器内挂载点）
+      # 上下文最大 token 数，建议通过 .env 配置，默认 8000
+      # - MAX_CONTEXT_TOKENS=8000
+      # 本地知识库路径（容器内挂载点，需在 volumes 中自行挂载）
       - OBSIDIAN_LOCAL_PATH=/vault
       # 容器访问宿主机本地服务（Ollama、WebDAV 等）
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
     volumes:
       - app-data:/data
-      # 挂载 Obsidian Vault 到容器内 /vault 目录（知识库本地模式）
-      - '/mnt/nas/obsidian/奇梦网络工坊:/vault'
     restart: unless-stopped
     networks:
       - app-network
@@ -66,7 +65,7 @@ services:
       - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana-data:/var/lib/grafana
