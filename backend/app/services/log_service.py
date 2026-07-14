@@ -8,6 +8,7 @@ Log 业务逻辑层
 """
 
 import logging
+import re
 import uuid
 from pathlib import Path
 
@@ -30,6 +31,20 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_EXTENSIONS = {".log", ".txt", ".csv"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+# 日志级别关键词（统一使用，避免正则重复）
+ERROR_KEYWORDS = {"ERROR", "FATAL", "CRITICAL", "EXCEPTION", "PANIC", "FAIL"}
+WARN_KEYWORDS = {"WARN", "WARNING", "ALERT"}
+
+
+def _build_level_pattern(keywords: set[str]) -> re.Pattern:
+    """拼接级别关键词为 word-boundary 正则"""
+    escaped = "|".join(re.escape(k) for k in sorted(keywords))
+    return re.compile(rf"\b({escaped})\b", re.IGNORECASE)
+
+
+ERROR_PATTERN = _build_level_pattern(ERROR_KEYWORDS)
+WARN_PATTERN = _build_level_pattern(WARN_KEYWORDS)
 
 
 class LogService:
@@ -87,10 +102,6 @@ class LogService:
         last_lines_buffer = []
         max_tail = 30
 
-        import re
-        error_pattern = re.compile(r"\b(ERROR|FATAL|CRITICAL|EXCEPTION)\b", re.IGNORECASE)
-        warn_pattern = re.compile(r"\b(WARN|WARNING|ALERT)\b", re.IGNORECASE)
-
         with open(disk_path, "wb") as f:
             async for chunk in file_iterator:
                 f.write(chunk)
@@ -105,9 +116,9 @@ class LogService:
                     last_lines_buffer.append(line)
                     if len(last_lines_buffer) > max_tail:
                         last_lines_buffer.pop(0)
-                    if error_pattern.search(line):
+                    if ERROR_PATTERN.search(line):
                         error_count += 1
-                    elif warn_pattern.search(line):
+                    elif WARN_PATTERN.search(line):
                         warning_count += 1
 
         # 生成摘要
@@ -204,9 +215,7 @@ class LogService:
     def get_error_lines_only(self, log_file: LogFile, max_lines: int = 500) -> str:
         """只获取错误行（用于上下文注入，节省 token）"""
         content = self.get_log_content(log_file)
-        import re
-        error_pattern = re.compile(r"\b(ERROR|FATAL|CRITICAL|EXCEPTION|PANIC|FAIL)\b", re.IGNORECASE)
-        error_lines = [line for line in content.split("\n") if error_pattern.search(line)]
+        error_lines = [line for line in content.split("\n") if ERROR_PATTERN.search(line)]
         if len(error_lines) > max_lines:
             error_lines = error_lines[:max_lines] + [f"... (共 {len(error_lines)} 行错误)"]
         return "\n".join(error_lines)
@@ -241,9 +250,7 @@ class LogService:
                 parts.append(f"[{lf.filename}]\n{lf.summary}")
             elif lf.content:
                 # 只取错误行
-                import re
-                error_pattern = re.compile(r"\b(ERROR|FATAL|CRITICAL|EXCEPTION)\b", re.IGNORECASE)
-                errors = [l for l in lf.content.split("\n") if error_pattern.search(l)]
+                errors = [l for l in lf.content.split("\n") if ERROR_PATTERN.search(l)]
                 if errors:
                     parts.append(f"[{lf.filename} 错误行]\n" + "\n".join(errors[:50]))
         return "\n\n".join(parts)

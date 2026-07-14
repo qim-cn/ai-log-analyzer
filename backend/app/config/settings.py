@@ -68,6 +68,11 @@ class Settings:
         default_factory=lambda: int(os.getenv("MAX_CONTEXT_TOKENS", "8000"))
     )
 
+    # 限流器后端（memory / sqlite）
+    rate_limiter_backend: str = field(
+        default_factory=lambda: os.getenv("RATE_LIMITER_BACKEND", "sqlite")
+    )
+
     # CORS 允许的源
     allowed_origins: list[str] = field(
         default_factory=lambda: [

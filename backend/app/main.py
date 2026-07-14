@@ -22,8 +22,8 @@ from app.config.database import close_database, init_database
 from app.config.settings import settings
 from app.middlewares.auth_middleware import AuthMiddleware
 from app.middlewares.error_handler import register_error_handlers
-from app.services.auth_service import auth_service
 from app.services.prometheus_service import prometheus_service
+from app.services.rate_limiter import RateLimiterFactory
 
 # 配置日志
 logging.basicConfig(
@@ -34,36 +34,14 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================
-# 简单内存限流器
+# 限流器（默认 SQLite，支持多容器复本共享）
 # ============================================================
-
-class RateLimiter:
-    """基于滑动窗口的简单限流器"""
-
-    def __init__(self, max_requests: int = 60, window_seconds: int = 60):
-        self.max_requests = max_requests
-        self.window_seconds = window_seconds
-        self._requests: dict[str, list[float]] = {}
-
-    def is_allowed(self, client_ip: str) -> bool:
-        now = time.time()
-        window_start = now - self.window_seconds
-
-        if client_ip not in self._requests:
-            self._requests[client_ip] = []
-
-        self._requests[client_ip] = [
-            t for t in self._requests[client_ip] if t > window_start
-        ]
-
-        if len(self._requests[client_ip]) >= self.max_requests:
-            return False
-
-        self._requests[client_ip].append(now)
-        return True
-
-
-rate_limiter = RateLimiter(max_requests=120, window_seconds=60)
+rate_limiter = RateLimiterFactory.get_limiter(
+    backend=settings.rate_limiter_backend,
+    max_requests=120,
+    window_seconds=60,
+)
+logger.info(f"限流器后端: {settings.rate_limiter_backend}")
 
 
 # ============================================================

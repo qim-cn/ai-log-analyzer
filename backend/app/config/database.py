@@ -145,6 +145,16 @@ def init_database() -> None:
         );
 
         CREATE INDEX IF NOT EXISTS idx_solutions_error_pattern ON solutions(error_pattern);
+
+        -- 限流器记录表（支持多进程/多容器共享）
+        CREATE TABLE IF NOT EXISTS rate_limits (
+            id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            client_ip  TEXT NOT NULL,
+            timestamp  REAL NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rate_limits_ip_time
+            ON rate_limits(client_ip, timestamp);
     """)
 
     # 迁移：如果 sessions 表没有 user_id 列，添加它
