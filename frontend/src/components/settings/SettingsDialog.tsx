@@ -11,6 +11,8 @@ import { templateService } from '@/services/templateService';
 import { RulesPanel } from '@/components/rules/RulesPanel';
 import { AuditPanel } from '@/components/audit/AuditPanel';
 import { WebhooksPanel } from '@/components/webhooks/WebhooksPanel';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
 import type { ObsidianSettings, AnalysisTemplate } from '@/types';
 import { cn } from '@/utils';
 
@@ -31,6 +33,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   } = useSettingsStore();
 
   const [tab, setTab] = useState<SettingsTab>('ai');
+  const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   // AI 设置
   const [provider, setProvider] = useState<'openai' | 'ollama'>('openai');
@@ -61,6 +65,16 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       fetchObsidianSettings();
     }
   }, [open, fetchSettings, fetchModels]);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (open) {
+      document.addEventListener('keydown', handleKey);
+      return () => document.removeEventListener('keydown', handleKey);
+    }
+  }, [open, onClose]);
 
   useEffect(() => {
     if (aiSettings) {
@@ -104,7 +118,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       });
       onClose();
     } catch (error) {
-      alert(`保存失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      toast('error', `保存失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setSaving(false);
     }
@@ -121,9 +135,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         auto_save: autoSave,
       });
       await fetchObsidianSettings();
-      alert('知识库配置已保存');
+      toast('success', '知识库配置已保存');
     } catch (error) {
-      alert(`保存失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      toast('error', `保存失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setSavingObsidian(false);
     }
@@ -147,7 +161,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   const handleCreateTemplate = async () => {
     if (!newTemplateName || !newTemplatePrompt) {
-      alert('请填写模板名称和内容');
+      toast('warning', '请填写模板名称和内容');
       return;
     }
     try {
@@ -156,17 +170,25 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       setNewTemplatePrompt('');
       fetchTemplates();
     } catch (err) {
-      alert('创建失败');
+      toast('error', '创建失败');
+      fetchTemplates();
     }
   };
 
   const handleDeleteTemplate = async (id: string) => {
-    if (!confirm('确定删除此模板？')) return;
+    setDeleteTemplateId(id);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTemplateId) return;
     try {
-      await templateService.delete(id);
+      await templateService.delete(deleteTemplateId);
+      setDeleteTemplateId(null);
       fetchTemplates();
-    } catch (err) {
-      alert('删除失败，预设模板无法删除');
+      toast('success', '模板已删除');
+    } catch {
+      toast('error', '删除失败，预设模板无法删除');
+      setDeleteTemplateId(null);
     }
   };
 
@@ -176,8 +198,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       await templateService.update(editingTemplate.id, editingTemplate.name, editingTemplate.prompt);
       setEditingTemplate(null);
       fetchTemplates();
-    } catch (err) {
-      alert('更新失败');
+      toast('success', '模板已更新');
+    } catch {
+      toast('error', '更新失败');
     }
   };
 
@@ -561,6 +584,16 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!deleteTemplateId}
+        title="删除模板"
+        message="确定删除此模板？删除后不可恢复。"
+        confirmText="删除"
+        variant="destructive"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTemplateId(null)}
+      />
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { ExportButton } from '@/components/export/ExportButton';
 import { ComparePanel } from '@/components/compare/ComparePanel';
 import { useChatStore, useSessionStore, useLogStore } from '@/stores';
 import { templateService } from '@/services/templateService';
+import { useToast } from '@/components/ui/Toast';
 import type { AnalysisTemplate } from '@/types';
 import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE } from '@/constants';
 import { cn, formatFileSize } from '@/utils';
@@ -34,6 +35,7 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
   } = useChatStore();
 
   const { logFiles, fetchLogs, uploadLog, uploading } = useLogStore();
+  const { toast } = useToast();
   const sessions = useSessionStore((s) => s.sessions);
   const currentSession = sessions.find((s) => s.id === sessionId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -58,7 +60,7 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
     try {
       await sendMessage(sessionId, content);
     } catch (error) {
-      console.error('发送失败:', error);
+      toast('error', `发送失败: ${error instanceof Error ? error.message : '请重试'}`);
     }
   };
 
@@ -71,13 +73,13 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
       if (file.size > MAX_FILE_SIZE) {
-        alert('文件大小超过 50MB 限制');
+        toast('error', '文件大小超过 50MB 限制');
         return;
       }
       try {
         await uploadLog(sessionId, file);
       } catch (err) {
-        alert(`上传失败: ${err instanceof Error ? err.message : '未知错误'}`);
+        toast('error', `上传失败: ${err instanceof Error ? err.message : '未知错误'}`);
       }
     };
     input.click();
@@ -137,8 +139,12 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         {loading && messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-            加载中...
+          <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
+            <div className="w-14 h-14 rounded-2xl bg-muted animate-pulse" />
+            <div className="space-y-2 w-full max-w-xs">
+              <div className="h-4 bg-muted rounded animate-pulse" />
+              <div className="h-4 bg-muted rounded animate-pulse w-3/4" />
+            </div>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
@@ -152,12 +158,14 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
               </div>
               <div className="flex flex-wrap justify-center gap-2">
                 {['总结错误', '找出根因', '生成排查步骤'].map((q) => (
-                  <span
+                  <button
                     key={q}
-                    className="px-3 py-1.5 rounded-full text-xs bg-muted text-muted-foreground"
+                    onClick={() => handleSend(q)}
+                    className="px-3 py-1.5 rounded-full text-xs bg-muted text-muted-foreground
+                               hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
                   >
                     {q}
-                  </span>
+                  </button>
                 ))}
               </div>
             </div>
@@ -245,7 +253,7 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
               key={tpl.id}
               onClick={() => {
                 if (logFiles.length === 0) {
-                  alert('请先上传日志文件');
+                  toast('warning', '请先上传日志文件');
                   return;
                 }
                 handleSend(tpl.prompt);

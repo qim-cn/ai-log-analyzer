@@ -3,7 +3,8 @@
  */
 
 import { Moon, Sun, Settings, PanelRight, Menu } from 'lucide-react';
-import { useThemeStore } from '@/stores';
+import { useThemeStore, useChatStore } from '@/stores';
+import { cn } from '@/utils';
 
 interface HeaderProps {
   onToggleSidebar?: () => void;
@@ -17,6 +18,7 @@ export function Header({
   onOpenSettings,
 }: HeaderProps) {
   const { theme, toggleTheme } = useThemeStore();
+  const streaming = useChatStore((s) => s.streaming);
 
   return (
     <header className="h-12 border-b border-border bg-card/80 backdrop-blur-sm flex items-center px-3 gap-2">
@@ -30,7 +32,10 @@ export function Header({
 
       {/* Logo */}
       <div className="flex items-center gap-2.5">
-        <div className="w-7 h-7 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center shadow-glow">
+        <div className={cn(
+          'w-7 h-7 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center shadow-glow transition-all duration-500',
+          streaming && 'animate-pulse-glow'
+        )}>
           <span className="text-white text-xs font-bold">AI</span>
         </div>
         <span className="font-semibold text-sm hidden sm:inline bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">

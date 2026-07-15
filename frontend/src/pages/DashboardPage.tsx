@@ -56,8 +56,18 @@ export function DashboardPage({ onBack }: DashboardPageProps) {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center text-muted-foreground">
-        加载中...
+      <div className="h-full flex flex-col p-6">
+        <div className="max-w-6xl mx-auto w-full space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="h-48 rounded-xl bg-muted animate-pulse" />
+            <div className="h-48 rounded-xl bg-muted animate-pulse" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -117,7 +127,7 @@ export function DashboardPage({ onBack }: DashboardPageProps) {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">成功率</span>
-                  <span className="font-medium text-green-500">
+                  <span className="font-medium text-success">
                     {stats?.success_rate || 0}%
                   </span>
                 </div>
@@ -193,10 +203,10 @@ interface StatCardProps {
 
 function StatCard({ icon, label, value, color }: StatCardProps) {
   const colorClasses = {
-    blue: 'bg-blue-500/10 text-blue-500',
-    green: 'bg-green-500/10 text-green-500',
-    red: 'bg-red-500/10 text-red-500',
-    purple: 'bg-purple-500/10 text-purple-500',
+    blue: 'bg-primary/10 text-primary',
+    green: 'bg-success/10 text-success',
+    red: 'bg-destructive/10 text-destructive',
+    purple: 'bg-accent/10 text-accent',
   };
 
   return (

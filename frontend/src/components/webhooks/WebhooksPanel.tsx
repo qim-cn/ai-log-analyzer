@@ -5,6 +5,8 @@
 import { useState, useEffect } from 'react';
 import { Webhook, Plus, Trash2, Send, Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
 import { webhookService, type Webhook as WebhookType } from '@/services/webhookService';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
 import { cn } from '@/utils';
 
 const WEBHOOK_TYPES = [
@@ -21,6 +23,8 @@ export function WebhooksPanel() {
   const [newType, setNewType] = useState('custom');
   const [newUrl, setNewUrl] = useState('');
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const fetchWebhooks = async () => {
     setLoading(true);
@@ -40,7 +44,7 @@ export function WebhooksPanel() {
 
   const handleCreate = async () => {
     if (!newName || !newUrl) {
-      alert('请填写名称和 URL');
+      toast('warning', '请填写名称和 URL');
       return;
     }
     setCreating(true);
@@ -50,7 +54,7 @@ export function WebhooksPanel() {
       setNewUrl('');
       fetchWebhooks();
     } catch (err) {
-      alert('创建失败');
+      toast('error', '创建失败');
     } finally {
       setCreating(false);
     }
@@ -60,27 +64,34 @@ export function WebhooksPanel() {
     try {
       await webhookService.update(webhook.id, { enabled: webhook.enabled ? 0 : 1 });
       fetchWebhooks();
-    } catch (err) {
-      alert('更新失败');
+    } catch {
+      toast('error', '更新失败');
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定删除此 Webhook？')) return;
+  const handleDeleteClick = (id: string) => {
+    setDeleteTarget(id);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
     try {
-      await webhookService.delete(id);
+      await webhookService.delete(deleteTarget);
+      setDeleteTarget(null);
       fetchWebhooks();
-    } catch (err) {
-      alert('删除失败');
+      toast('success', 'Webhook 已删除');
+    } catch {
+      toast('error', '删除失败');
+      setDeleteTarget(null);
     }
   };
 
   const handleTest = async (id: string) => {
     try {
       await webhookService.test(id);
-      alert('测试消息已发送');
-    } catch (err) {
-      alert('测试失败');
+      toast('success', '测试消息已发送');
+    } catch {
+      toast('error', '测试失败');
     }
   };
 
@@ -176,7 +187,7 @@ export function WebhooksPanel() {
                   <Send size={13} />
                 </button>
                 <button
-                  onClick={() => handleDelete(webhook.id)}
+                  onClick={() => handleDeleteClick(webhook.id)}
                   className="p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-colors"
                 >
                   <Trash2 size={13} />
@@ -186,6 +197,16 @@ export function WebhooksPanel() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="删除 Webhook"
+        message="确定删除此 Webhook 配置？"
+        confirmText="删除"
+        variant="destructive"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

@@ -2,9 +2,11 @@
  * 左侧会话列表侧边栏
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { MessageSquarePlus, Trash2, MessageSquare } from 'lucide-react';
 import { useSessionStore } from '@/stores';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
 import { cn, formatTime } from '@/utils';
 
 interface SidebarProps {
@@ -23,12 +25,16 @@ export function Sidebar({ className, onClose }: SidebarProps) {
     setCurrentSession,
   } = useSessionStore();
 
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const { toast } = useToast();
+
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
 
   const handleCreate = async () => {
     await createSession();
+    toast('success', '会话已创建');
     onClose?.();
   };
 
@@ -37,11 +43,16 @@ export function Sidebar({ className, onClose }: SidebarProps) {
     onClose?.();
   };
 
-  const handleDelete = async (e: React.MouseEvent, id: string) => {
+  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (confirm('确定删除这个会话？')) {
-      await deleteSession(id);
-    }
+    setDeleteTarget(id);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    await deleteSession(deleteTarget);
+    toast('success', '会话已删除');
+    setDeleteTarget(null);
   };
 
   return (
@@ -62,8 +73,10 @@ export function Sidebar({ className, onClose }: SidebarProps) {
       {/* Session List */}
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
         {loading && sessions.length === 0 ? (
-          <div className="text-center text-muted-foreground py-8 text-sm">
-            加载中...
+          <div className="space-y-2 p-2">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-10 rounded-xl bg-muted animate-pulse" />
+            ))}
           </div>
         ) : sessions.length === 0 ? (
           <div className="text-center text-muted-foreground py-8 text-sm">
@@ -99,7 +112,7 @@ export function Sidebar({ className, onClose }: SidebarProps) {
                 </div>
               </div>
               <button
-                onClick={(e) => handleDelete(e, session.id)}
+                onClick={(e) => handleDeleteClick(e, session.id)}
                 className="opacity-0 group-hover:opacity-100 p-1 rounded-md
                            hover:bg-destructive/10 hover:text-destructive
                            transition-all duration-150"
@@ -110,6 +123,16 @@ export function Sidebar({ className, onClose }: SidebarProps) {
           ))
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="删除会话"
+        message="确定删除这个会话？删除后不可恢复。"
+        confirmText="删除"
+        variant="destructive"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

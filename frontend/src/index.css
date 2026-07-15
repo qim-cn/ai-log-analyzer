@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @layer base {
   :root {
@@ -41,7 +41,7 @@
     --muted-foreground: 217 20% 55%;
     --accent: 189 94% 43%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 0 62% 30%;
+    --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 100%;
     --border: 228 18% 14%;
     --input: 228 18% 14%;
@@ -179,18 +179,20 @@
   40% { transform: scale(1); opacity: 1; }
 }
 
-.animate-fade-in {
-  animation: fade-in 0.3s ease-out;
-}
+@media (prefers-reduced-motion: no-preference) {
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
 
-.animate-slide-up {
-  animation: slide-up 0.4s ease-out;
-}
+  .animate-slide-up {
+    animation: slide-up 0.4s ease-out;
+  }
 
-.animate-pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
-}
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
 
-.animate-thinking-dot {
-  animation: thinking-dot 1.4s ease-in-out infinite;
+  .animate-thinking-dot {
+    animation: thinking-dot 1.4s ease-in-out infinite;
+  }
 }

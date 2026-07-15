@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { Download, FileText, FileDown, Loader2 } from 'lucide-react';
 import { exportService } from '@/services/exportService';
+import { useToast } from '@/components/ui/Toast';
 
 interface ExportButtonProps {
   sessionId: string;
@@ -14,6 +15,7 @@ interface ExportButtonProps {
 export function ExportButton({ sessionId }: ExportButtonProps) {
   const [open, setOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const { toast } = useToast();
 
   const handleExport = async (format: 'markdown' | 'pdf') => {
     setExporting(true);
@@ -24,8 +26,9 @@ export function ExportButton({ sessionId }: ExportButtonProps) {
       } else {
         await exportService.exportPdf(sessionId);
       }
-    } catch (err) {
-      alert('导出失败');
+      toast('success', '导出成功');
+    } catch {
+      toast('error', '导出失败');
     } finally {
       setExporting(false);
     }

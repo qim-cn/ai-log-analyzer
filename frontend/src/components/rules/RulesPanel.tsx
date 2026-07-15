@@ -5,6 +5,8 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, ToggleLeft, ToggleRight, Loader2 } from 'lucide-react';
 import { ruleService, type AlertRule } from '@/services/ruleService';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
 import { cn } from '@/utils';
 
 export function RulesPanel() {
@@ -14,6 +16,8 @@ export function RulesPanel() {
   const [newCondition, setNewCondition] = useState('');
   const [newWindow, setNewWindow] = useState('5m');
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const fetchRules = async () => {
     setLoading(true);
@@ -33,7 +37,7 @@ export function RulesPanel() {
 
   const handleCreate = async () => {
     if (!newName || !newCondition) {
-      alert('请填写规则名称和条件');
+      toast('warning', '请填写规则名称和条件');
       return;
     }
     setCreating(true);
@@ -47,7 +51,7 @@ export function RulesPanel() {
       setNewCondition('');
       fetchRules();
     } catch (err) {
-      alert('创建失败');
+      toast('error', '创建失败');
     } finally {
       setCreating(false);
     }
@@ -57,18 +61,25 @@ export function RulesPanel() {
     try {
       await ruleService.update(rule.id, { enabled: rule.enabled ? 0 : 1 });
       fetchRules();
-    } catch (err) {
-      alert('更新失败');
+    } catch {
+      toast('error', '更新失败');
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定删除此规则？')) return;
+  const handleDeleteClick = (id: string) => {
+    setDeleteTarget(id);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
     try {
-      await ruleService.delete(id);
+      await ruleService.delete(deleteTarget);
+      setDeleteTarget(null);
       fetchRules();
-    } catch (err) {
-      alert('删除失败');
+      toast('success', '规则已删除');
+    } catch {
+      toast('error', '删除失败');
+      setDeleteTarget(null);
     }
   };
 
@@ -161,7 +172,7 @@ export function RulesPanel() {
               </div>
 
               <button
-                onClick={() => handleDelete(rule.id)}
+                onClick={() => handleDeleteClick(rule.id)}
                 className="p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-colors shrink-0"
               >
                 <Trash2 size={14} />
@@ -170,6 +181,16 @@ export function RulesPanel() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="删除规则"
+        message="确定删除此告警规则？"
+        confirmText="删除"
+        variant="destructive"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

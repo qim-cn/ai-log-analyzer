@@ -6,6 +6,7 @@
 import { useCallback, useState } from 'react';
 import { Upload, Loader2, CheckCircle2 } from 'lucide-react';
 import { useLogStore } from '@/stores';
+import { useToast } from '@/components/ui/Toast';
 import { cn } from '@/utils';
 import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE } from '@/constants';
 
@@ -15,6 +16,7 @@ interface LogUploaderProps {
 
 export function LogUploader({ sessionId }: LogUploaderProps) {
   const { uploading, uploadLog } = useLogStore();
+  const { toast } = useToast();
   const [dragging, setDragging] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
@@ -22,12 +24,12 @@ export function LogUploader({ sessionId }: LogUploaderProps) {
     async (file: File) => {
       const ext = '.' + file.name.split('.').pop()?.toLowerCase();
       if (!ALLOWED_FILE_TYPES.includes(ext)) {
-        alert(`不支持的文件类型: ${ext}`);
+        toast('error', `不支持的文件类型: ${ext}`);
         return;
       }
 
       if (file.size > MAX_FILE_SIZE) {
-        alert(`文件大小超过限制 (最大 50MB)`);
+        toast('error', `文件大小超过限制 (最大 50MB)`);
         return;
       }
 
@@ -36,7 +38,7 @@ export function LogUploader({ sessionId }: LogUploaderProps) {
         setUploadSuccess(true);
         setTimeout(() => setUploadSuccess(false), 2000);
       } catch (error) {
-        alert(`上传失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        toast('error', `上传失败: ${error instanceof Error ? error.message : '未知错误'}`);
       }
     },
     [sessionId, uploadLog]

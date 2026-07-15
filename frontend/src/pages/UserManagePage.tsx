@@ -5,6 +5,8 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Trash2, Shield, User, Loader2 } from 'lucide-react';
 import { authService } from '@/services/authService';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
 import type { User as UserType } from '@/types';
 import { cn, formatTime } from '@/utils';
 
@@ -19,6 +21,8 @@ export function UserManagePage({ onBack }: UserManagePageProps) {
   const [newPassword, setNewPassword] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; username: string } | null>(null);
+  const { toast } = useToast();
 
   const fetchUsers = async () => {
     try {
@@ -62,14 +66,20 @@ export function UserManagePage({ onBack }: UserManagePageProps) {
     }
   };
 
-  const handleDelete = async (userId: string, username: string) => {
-    if (!confirm(`确定删除用户 ${username}？`)) return;
+  const handleDeleteClick = (userId: string, username: string) => {
+    setDeleteTarget({ id: userId, username });
+  };
 
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
     try {
-      await authService.deleteUser(userId);
+      await authService.deleteUser(deleteTarget.id);
+      setDeleteTarget(null);
       fetchUsers();
+      toast('success', `用户 ${deleteTarget.username} 已删除`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : '删除失败');
+      toast('error', err instanceof Error ? err.message : '删除失败');
+      setDeleteTarget(null);
     }
   };
 
@@ -186,7 +196,7 @@ export function UserManagePage({ onBack }: UserManagePageProps) {
 
                 {/* Delete */}
                 <button
-                  onClick={() => handleDelete(user.id, user.username)}
+                  onClick={() => handleDeleteClick(user.id, user.username)}
                   className="p-1.5 rounded-lg hover:bg-destructive/10 hover:text-destructive
                              transition-colors"
                   title="删除用户"
@@ -198,6 +208,16 @@ export function UserManagePage({ onBack }: UserManagePageProps) {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="删除用户"
+        message={deleteTarget ? `确定删除用户 ${deleteTarget.username}？此操作不可撤销。` : ''}
+        confirmText="删除"
+        variant="destructive"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
