@@ -34,6 +34,8 @@ services:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
     volumes:
       - app-data:/data
+      # 挂载 Obsidian Vault（本地模式，如需连接到 NAS 请取消注释并修改路径）
+      # - //192.168.31.5/Obsidian Vault/服务器维修笔记:/vault
     restart: unless-stopped
     networks:
       - app-network

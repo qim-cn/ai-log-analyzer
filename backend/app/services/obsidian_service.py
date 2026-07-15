@@ -1,7 +1,7 @@
 """
 Obsidian 知识库服务
 
-通过 WebDAV 或本地文件系统连接 Obsidian 仓库，自动生成 DEBUG 记录笔记。
+通过 WebDAV 或本地文件系统连接 Obsidian 仓库，自动生成分析结果笔记到 03-AI分析/。
 
 模式：
 - WebDAV 模式：设置 OBSIDIAN_WEBDAV_URL 后通过 WebDAV 协议访问远程仓库
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_WEBDAV_URL = os.getenv("OBSIDIAN_WEBDAV_URL", "")
 DEFAULT_WEBDAV_USER = os.getenv("OBSIDIAN_WEBDAV_USER", "")
 DEFAULT_WEBDAV_PASS = os.getenv("OBSIDIAN_WEBDAV_PASS", "")
-DEFAULT_VAULT_PATH = "/服务器维修笔记/DEBUG记录/"
+DEFAULT_VAULT_PATH = os.getenv("OBSIDIAN_VAULT_PATH", "/03-AI分析/incidents/")
 
 # 本地文件系统配置
 LOCAL_VAULT_PATH = os.getenv("OBSIDIAN_LOCAL_PATH", "/vault")
@@ -40,11 +40,18 @@ def _get_settings() -> dict:
     ).fetchall()
     config = {row["key"]: row["value"] for row in rows}
 
+    # 优先级：数据库配置 > 环境变量 > 默认值
+    vault_path = (
+        config.get("obsidian_vault_path")
+        or os.getenv("OBSIDIAN_VAULT_PATH")
+        or DEFAULT_VAULT_PATH
+    )
+
     return {
         "webdav_url": config.get("obsidian_webdav_url", DEFAULT_WEBDAV_URL),
         "webdav_user": config.get("obsidian_webdav_user", DEFAULT_WEBDAV_USER),
         "webdav_pass": config.get("obsidian_webdav_pass", DEFAULT_WEBDAV_PASS),
-        "vault_path": config.get("obsidian_vault_path", DEFAULT_VAULT_PATH),
+        "vault_path": vault_path,
         "auto_save": config.get("obsidian_auto_save", "false") == "true",
     }
 
@@ -157,6 +164,43 @@ def _sanitize_filename(title: str) -> str:
     return safe.strip()
 
 
+def _render_template(template_name: str, variables: dict) -> Optional[str]:
+    """从 vault Templates/ 目录读取模板并渲染
+
+    模板中使用 {变量名} 做变量替换。
+    支持条件段落：<!-- if:var -->...<!-- endif -->
+    支持循环：    <!-- for:list -->...<!-- endfor -->
+    """
+    template_dir = Path(LOCAL_VAULT_PATH) / "Templates"
+    template_file = template_dir / template_name
+
+    if not template_file.exists():
+        logger.warning(f"Template not found: {template_file}, using fallback")
+        return None
+
+    try:
+        content = template_file.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Failed to read template {template_file}: {e}")
+        return None
+
+    # 变量替换
+    for key, value in variables.items():
+        placeholder = "{" + key + "}"
+        str_value = str(value) if value is not None else ""
+        content = content.replace(placeholder, str_value)
+
+    # 条件段落处理
+    content = re.sub(
+        r'<!--\s*if:(\w+)\s*-->(.*?)<!--\s*endif\s*-->',
+        lambda m: m.group(2) if variables.get(m.group(1)) else "",
+        content,
+        flags=re.DOTALL,
+    )
+
+    return content
+
+
 def generate_note_content(
     title: str,
     log_summary: str,
@@ -164,10 +208,38 @@ def generate_note_content(
     analysis: str,
     user: str = "admin",
 ) -> str:
-    """生成 Obsidian 笔记内容"""
+    """生成 Obsidian 笔记内容
+
+    优先使用 vault Templates/ 目录下的模板文件渲染。
+    如果模板不存在，回退到内置的硬编码模板。
+    """
     now = datetime.utcnow().isoformat() + "Z"
     sections = parse_analysis(analysis)
 
+    # 尝试从 vault 模板渲染
+    template_vars = {
+        "server": "unknown",
+        "title": title,
+        "created": now,
+        "source": "",
+        "severity": "warning",
+        "severity_emoji": "⚠️",
+        "severity_label": "需关注",
+        "ai_model": os.getenv("AI_MODEL", "gpt-4o"),
+        "findings": sections.get("summary", log_summary),
+        "key_metrics": "",
+        "diagnosis": sections.get("cause", "（分析结果解析失败，请查看原始分析）"),
+        "suggestions": sections.get("solution", "（分析结果解析失败，请查看原始分析）"),
+        "log_fragments": log_snippet[:2000] if log_snippet else "",
+        "tags": "log-analysis, debug",
+        "similar_cases": "",
+    }
+
+    rendered = _render_template("template-incident.md", template_vars)
+    if rendered:
+        return rendered
+
+    # 回退：内置硬编码模板
     content = f"""---
 title: {title}
 date: {now}
