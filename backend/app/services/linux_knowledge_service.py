@@ -29,25 +29,27 @@ def init_linux_knowledge_table() -> None:
             command     TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '',
             tags        TEXT NOT NULL DEFAULT '',
-            solution    TEXT NOT NULL DEFAULT ''
+            solution    TEXT NOT NULL DEFAULT '',
+            source      TEXT NOT NULL DEFAULT 'builtin'
+                CHECK (source IN ('builtin', 'custom'))
         );
 
         CREATE INDEX IF NOT EXISTS idx_linux_knowledge_category
             ON linux_knowledge(category);
     """)
+    # 迁移：旧表可能没有 source 列
+    try:
+        conn.execute("SELECT source FROM linux_knowledge LIMIT 1")
+    except Exception:
+        conn.execute("ALTER TABLE linux_knowledge ADD COLUMN source TEXT NOT NULL DEFAULT 'builtin'")
+        conn.commit()
     conn.commit()
     logger.info("Linux knowledge table ready")
 
 
 def seed_linux_knowledge() -> None:
-    """从 JSON 文件导入种子数据（幂等：已有数据则跳过）"""
+    """从 JSON 文件导入种子数据（条目数变化则自动重建）"""
     conn = get_connection()
-
-    # 检查是否已导入
-    count = conn.execute("SELECT COUNT(*) FROM linux_knowledge").fetchone()[0]
-    if count > 0:
-        logger.info(f"Linux knowledge already seeded ({count} entries), skipping")
-        return
 
     if not SEED_FILE.exists():
         logger.warning(f"Seed file not found: {SEED_FILE}")
@@ -55,6 +57,19 @@ def seed_linux_knowledge() -> None:
 
     with open(SEED_FILE, "r", encoding="utf-8") as f:
         entries = json.load(f)
+
+    expected = len(entries)
+    current = conn.execute("SELECT COUNT(*) FROM linux_knowledge").fetchone()[0]
+    if current == expected:
+        logger.info(f"Linux knowledge up to date ({current} entries), skipping")
+        return
+
+    # 仅替换内置条目，保护用户自定义条目
+    custom_count = conn.execute(
+        "SELECT COUNT(*) FROM linux_knowledge WHERE source = 'custom'"
+    ).fetchone()[0]
+    conn.execute("DELETE FROM linux_knowledge WHERE source = 'builtin'")
+    logger.info(f"Rebuilding builtin knowledge: {current - custom_count}→{expected} (+{custom_count} custom)")
 
     inserted = 0
     for entry in entries:
@@ -149,6 +164,49 @@ def list_categories() -> list[dict]:
            ORDER BY category"""
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+def add_entry(category: str, title: str, command: str,
+              description: str = "", tags: str = "", solution: str = "") -> dict:
+    """添加自定义条目（source='custom'，不会被种子数据覆盖）"""
+    conn = get_connection()
+    cur = conn.execute(
+        """INSERT INTO linux_knowledge (category, title, command, description, tags, solution, source)
+           VALUES (?, ?, ?, ?, ?, ?, 'custom')""",
+        (category, title, command, description, tags, solution),
+    )
+    conn.commit()
+    entry_id = cur.lastrowid
+    logger.info(f"User added knowledge entry {entry_id}: {title}")
+    row = conn.execute("SELECT * FROM linux_knowledge WHERE id = ?", (entry_id,)).fetchone()
+    return dict(row)
+
+
+def update_entry(entry_id: int, **fields) -> dict | None:
+    """更新条目，只更新传入的非空字段"""
+    allowed = {"category", "title", "command", "description", "tags", "solution"}
+    updates = {k: v for k, v in fields.items() if k in allowed and v}
+    if not updates:
+        return None
+    conn = get_connection()
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [entry_id]
+    conn.execute(f"UPDATE linux_knowledge SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    logger.info(f"User updated knowledge entry {entry_id}")
+    row = conn.execute("SELECT * FROM linux_knowledge WHERE id = ?", (entry_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def delete_entry(entry_id: int) -> bool:
+    """删除条目"""
+    conn = get_connection()
+    cur = conn.execute("DELETE FROM linux_knowledge WHERE id = ?", (entry_id,))
+    conn.commit()
+    deleted = cur.rowcount > 0
+    if deleted:
+        logger.info(f"User deleted knowledge entry {entry_id}")
+    return deleted
 
 
 def get_knowledge_stats() -> dict:

@@ -31,8 +31,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         path = request.url.path
 
-        # 公开路径不需要认证（支持前缀匹配）
+        # 完全公开路径
         if any(path.startswith(prefix) for prefix in PUBLIC_PATH_PREFIXES):
+            return await call_next(request)
+
+        # Linux 知识库：GET 公开，写操作需认证
+        if path.startswith("/api/knowledge/linux") and request.method == "GET":
             return await call_next(request)
 
         # OPTIONS 请求不需要认证

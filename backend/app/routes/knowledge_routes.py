@@ -321,6 +321,9 @@ from app.services.linux_knowledge_service import (
     search_linux_knowledge,
     list_categories,
     get_knowledge_stats,
+    add_entry,
+    update_entry,
+    delete_entry,
 )
 
 
@@ -363,3 +366,72 @@ async def get_linux_kb_stats():
     """获取知识库统计"""
     stats = get_knowledge_stats()
     return {"code": 0, "message": "success", "data": stats}
+
+
+# ============================================================
+# 写操作 API（需要登录）
+# ============================================================
+
+from fastapi import Request
+from pydantic import BaseModel
+
+
+class AddEntryBody(BaseModel):
+    category: str
+    title: str
+    command: str
+    description: str = ""
+    tags: str = ""
+    solution: str = ""
+
+
+class UpdateEntryBody(BaseModel):
+    category: str = ""
+    title: str = ""
+    command: str = ""
+    description: str = ""
+    tags: str = ""
+    solution: str = ""
+
+
+@router.post("/linux/entry", response_model=dict)
+async def add_linux_entry(body: AddEntryBody, request: Request):
+    """添加自定义命令（需登录）"""
+    user = request.state.user
+    entry = add_entry(
+        category=body.category,
+        title=body.title,
+        command=body.command,
+        description=body.description,
+        tags=body.tags,
+        solution=body.solution,
+    )
+    return {"code": 0, "message": "success", "data": entry}
+
+
+@router.put("/linux/entry/{entry_id}", response_model=dict)
+async def update_linux_entry(entry_id: int, body: UpdateEntryBody, request: Request):
+    """更新命令（需登录）"""
+    user = request.state.user
+    result = update_entry(
+        entry_id,
+        category=body.category,
+        title=body.title,
+        command=body.command,
+        description=body.description,
+        tags=body.tags,
+        solution=body.solution,
+    )
+    if result is None:
+        return {"code": 404, "message": "条目不存在", "data": None}
+    return {"code": 0, "message": "success", "data": result}
+
+
+@router.delete("/linux/entry/{entry_id}", response_model=dict)
+async def delete_linux_entry(entry_id: int, request: Request):
+    """删除命令（需登录）"""
+    user = request.state.user
+    ok = delete_entry(entry_id)
+    if not ok:
+        return {"code": 404, "message": "条目不存在", "data": None}
+    return {"code": 0, "message": "success", "data": None}
