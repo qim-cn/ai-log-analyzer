@@ -46,7 +46,7 @@ async def save_note(body: SaveNoteRequest, request: Request):
     user = request.state.user
     result = await obsidian_service.save_note(
         title=body.title,
-        model=body.model,
+        save_path=body.save_path,
         log_summary=body.log_summary or "",
         log_snippet=body.log_snippet or "",
         analysis=body.analysis,

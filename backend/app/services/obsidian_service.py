@@ -418,7 +418,7 @@ class ObsidianService:
     def _local_save_note(
         self,
         title: str,
-        model: str,
+        save_path: str,
         log_summary: str,
         log_snippet: str,
         analysis: str,
@@ -434,7 +434,7 @@ class ObsidianService:
         filename = f"{date_str}_{safe_title}.md"
 
         content = generate_note_content(
-            title=title, model=model,
+            title=title, model=save_path,
             log_summary=log_summary,
             log_snippet=log_snippet,
             analysis=analysis,
@@ -513,43 +513,46 @@ class ObsidianService:
     async def save_note(
         self,
         title: str,
-        model: str,
-        log_summary: str,
-        log_snippet: str,
-        analysis: str,
+        save_path: str = "",
+        log_summary: str = "",
+        log_snippet: str = "",
+        analysis: str = "",
         user: str = "admin",
         resolved: bool = False,
     ) -> dict:
-        """保存笔记。resolved=True → 写入本地 /resolved/{model}/"""
+        """保存笔记。resolved=True → 写入本地 /resolved/{save_path}/"""
         if resolved:
-            return self._save_resolved_local(title, model, log_summary, log_snippet, analysis, user)
+            return self._save_resolved_local(title, save_path, log_summary, log_snippet, analysis, user)
         if self._is_webdav_configured():
-            return await self._save_note_webdav(title, model, log_summary, log_snippet, analysis, user, False)
+            return await self._save_note_webdav(title, save_path, log_summary, log_snippet, analysis, user, False)
         else:
-            return self._local_save_note(title, model, log_summary, log_snippet, analysis, user, False)
+            return self._local_save_note(title, save_path, log_summary, log_snippet, analysis, user, False)
 
     def _save_resolved_local(
-        self, title: str, model: str, log_summary: str, log_snippet: str,
+        self, title: str, save_path: str, log_summary: str, log_snippet: str,
         analysis: str, user: str = "admin",
     ) -> dict:
-        """已解决 → /resolved/{机型}/{标题}.md"""
-        model_dir = Path("/resolved") / _sanitize_filename(model) if model else Path("/resolved")
-        model_dir.mkdir(parents=True, exist_ok=True)
+        """已解决 → /resolved/{用户指定子目录}/{标题}.md"""
+        # 用户手动指定的子路径，空 = 根目录
+        clean_path = save_path.strip().strip("/")
+        target_dir = Path("/resolved") / _sanitize_filename(clean_path) if clean_path else Path("/resolved")
+        target_dir.mkdir(parents=True, exist_ok=True)
 
         date_str = datetime.utcnow().strftime("%Y-%m-%d")
         safe_title = _sanitize_filename(title)
         filename = f"{date_str}_{safe_title}.md"
 
         content = generate_note_content(
-            title=title, model=model, log_summary=log_summary, log_snippet=log_snippet,
+            title=title, model=clean_path, log_summary=log_summary, log_snippet=log_snippet,
             analysis=analysis, user=user,
         )
 
-        file_path = model_dir / filename
+        file_path = target_dir / filename
+        rel = str(file_path.relative_to(Path("/resolved")))
         try:
             file_path.write_text(content, encoding="utf-8")
             logger.info(f"Resolved note saved: {file_path}")
-            return {"success": True, "filename": str(file_path.relative_to(Path("/resolved"))) + "" if model else filename, "message": "已保存到已解决目录"}
+            return {"success": True, "filename": rel, "message": f"已保存到 已解决/{clean_path}"}
         except Exception as e:
             logger.error(f"Failed to save resolved note: {e}")
             return {"success": False, "filename": "", "message": f"保存失败: {e}"}
@@ -557,7 +560,7 @@ class ObsidianService:
     async def _save_note_webdav(
         self,
         title: str,
-        model: str,
+        save_path: str,
         log_summary: str,
         log_snippet: str,
         analysis: str,
@@ -581,7 +584,7 @@ class ObsidianService:
         filename = f"{date_str}_{safe_title}.md"
 
         content = generate_note_content(
-            title=title, model=model,
+            title=title, model=save_path,
             log_summary=log_summary,
             log_snippet=log_snippet,
             analysis=analysis,

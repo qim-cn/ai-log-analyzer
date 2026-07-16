@@ -8,7 +8,7 @@ from pydantic import BaseModel
 class SaveNoteRequest(BaseModel):
     """保存笔记请求"""
     title: str
-    model: str = ""           # 机型，如 7500S、R750 等
+    save_path: str = ""         # 用户指定保存子目录（如 7500S），空=根目录
     log_summary: str = ""
     log_snippet: str = ""
     analysis: str
