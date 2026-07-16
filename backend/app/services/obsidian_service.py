@@ -708,13 +708,15 @@ updated: {datetime.utcnow().isoformat()}Z
             name = item["name"]
             href = item["href"]
 
-            # 跳过当前目录
+            # 跳过当前目录和隐藏目录/文件
+            if name.startswith("."):
+                continue
             decoded_href = unquote(href.rstrip("/"))
             decoded_current = unquote(current_path.rstrip("/"))
             if decoded_href.split("/")[-1] == decoded_current.split("/")[-1]:
                 continue
 
-            # 构建相对路径：先相对 base_url 路径，再去掉 vault_path 前缀
+            # 构建相对路径
             from urllib.parse import urlparse
             decoded_href = unquote(href)
             base_path = urlparse(base_url).path.rstrip("/")
@@ -730,20 +732,13 @@ updated: {datetime.utcnow().isoformat()}Z
             rel_path = unquote(rel_path)
 
             if item.get("is_collection"):
-                # 递归获取子目录
-                sub_url = _make_webdav_url(base_url, href)
-                children = await self._list_directory(base_url, auth, sub_url, href.strip("/"), vault_path)
+                children = await self._list_directory(base_url, auth, _make_webdav_url(base_url, href), href.strip("/"), vault_path)
                 result.append({
-                    "name": name,
-                    "path": rel_path,
-                    "type": "folder",
-                    "children": children,
+                    "name": name, "path": rel_path, "type": "folder", "children": children,
                 })
-            elif name.endswith(".md"):
+            elif name.endswith((".md", ".canvas", ".txt", ".log", ".csv", ".json", ".yaml", ".yml", ".py", ".sh", ".conf")):
                 result.append({
-                    "name": name,
-                    "path": rel_path,
-                    "type": "file",
+                    "name": name, "path": rel_path, "type": "file",
                 })
 
         # 排序：目录在前，文件在后

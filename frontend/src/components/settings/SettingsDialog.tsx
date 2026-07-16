@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
-import { X, RefreshCw, Loader2, BookOpen, Globe, Folder, ChevronRight } from 'lucide-react';
+import { X, RefreshCw, Loader2, BookOpen, Globe, Folder, FileText, ChevronRight } from 'lucide-react';
 import { useSettingsStore } from '@/stores';
 import { obsidianService, type FileTreeNode } from '@/services/obsidianService';
 import { RulesPanel } from '@/components/rules/RulesPanel';
@@ -89,8 +89,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const breadcrumb = currentPath.length > 0
     ? ['Vault', ...currentPath]
     : ['Vault'];
-
-  const folders = tree.filter(n => n.type === 'folder');
 
   useEffect(() => {
     if (open) {
@@ -338,14 +336,26 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                       <div className="text-center py-4 text-[11px] text-muted-foreground">
                         <Loader2 size={14} className="animate-spin mx-auto mb-1" />加载中...
                       </div>
-                    ) : folders.length === 0 ? (
+                    ) : tree.length === 0 ? (
                       <div className="text-center py-4 text-[11px] text-muted-foreground">此目录为空</div>
                     ) : (
-                      folders.map((node) => (
-                        <button key={node.path} onClick={() => enterFolder(node)}
-                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-muted text-left group">
-                          <ChevronRight size={12} className="text-muted-foreground shrink-0 opacity-40 group-hover:opacity-100" />
-                          <Folder size={13} className="text-primary/70 shrink-0" />
+                      tree.map((node) => (
+                        <button key={node.path}
+                          onClick={() => { if (node.type === 'folder') enterFolder(node); }}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left group',
+                            node.type === 'folder' ? 'hover:bg-muted cursor-pointer' : 'opacity-70'
+                          )}>
+                          {node.type === 'folder' ? (
+                            <ChevronRight size={12} className="text-muted-foreground shrink-0 opacity-40 group-hover:opacity-100" />
+                          ) : (
+                            <FileText size={12} className="text-muted-foreground/40 shrink-0" />
+                          )}
+                          {node.type === 'folder' ? (
+                            <Folder size={13} className="text-primary/70 shrink-0" />
+                          ) : (
+                            <FileText size={13} className="text-muted-foreground shrink-0" />
+                          )}
                           <span className="text-[11px] truncate">{node.name}</span>
                         </button>
                       ))
