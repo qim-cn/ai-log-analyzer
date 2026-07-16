@@ -161,6 +161,7 @@ async def get_settings(request: Request):
             webdav_user=settings["webdav_user"],
             webdav_configured=bool(settings["webdav_url"]),
             vault_path=settings["vault_path"],
+            browse_paths=settings.get("browse_paths", []),
             auto_save=settings["auto_save"],
         ),
     }
@@ -199,6 +200,7 @@ async def update_settings(body: UpdateObsidianSettingsRequest, request: Request)
             webdav_user=settings["webdav_user"],
             webdav_configured=bool(settings["webdav_url"]),
             vault_path=settings["vault_path"],
+            browse_paths=settings.get("browse_paths", []),
             auto_save=settings["auto_save"],
         ),
     }

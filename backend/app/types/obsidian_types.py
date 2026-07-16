@@ -21,6 +21,7 @@ class ObsidianSettingsResponse(BaseModel):
     webdav_user: str
     webdav_configured: bool
     vault_path: str
+    browse_paths: list[str] = []
     auto_save: bool
 
 
