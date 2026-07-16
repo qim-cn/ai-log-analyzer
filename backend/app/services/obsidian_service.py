@@ -8,6 +8,7 @@ Obsidian 知识库服务
 - 本地模式（默认）：当 WebDAV 未配置时，直接读取本地文件系统上的仓库
 """
 
+import json
 import logging
 import os
 import re
@@ -46,6 +47,7 @@ def _get_settings() -> dict:
         "webdav_user": config.get("obsidian_webdav_user", DEFAULT_WEBDAV_USER),
         "webdav_pass": config.get("obsidian_webdav_pass", DEFAULT_WEBDAV_PASS),
         "vault_path": config.get("obsidian_vault_path", DEFAULT_VAULT_PATH),
+        "browse_paths": json.loads(config.get("obsidian_browse_paths", "[]")),
         "auto_save": config.get("obsidian_auto_save", "false") == "true",
     }
 
@@ -504,9 +506,11 @@ class ObsidianService:
         conn = get_connection()
         for key, value in settings.items():
             db_key = f"obsidian_{key}"
+            # browse_paths 需要 JSON 序列化
+            val = json.dumps(value) if key == "browse_paths" and isinstance(value, list) else str(value)
             conn.execute(
                 "INSERT OR REPLACE INTO ai_settings (key, value) VALUES (?, ?)",
-                (db_key, str(value)),
+                (db_key, val),
             )
         conn.commit()
 
@@ -722,7 +726,7 @@ updated: {datetime.utcnow().isoformat()}Z
             if item.get("is_collection"):
                 children = await self._list_dir(auth, f"{self._webdav_root}{href}", depth + 1) if depth < 2 else []
                 result.append({"name": name, "path": rel, "type": "folder", "children": children})
-            elif name.endswith((".md", ".canvas", ".txt", ".log", ".csv", ".json", ".yaml", ".yml", ".py", ".sh", ".conf")):
+            elif name.endswith((".md", ".canvas", ".txt", ".log", ".csv", ".json", ".yaml", ".yml", ".py", ".sh", ".conf", ".ppt", ".pptx", ".pdf")):
                 result.append({"name": name, "path": rel, "type": "file"})
 
         # 排序：目录在前，文件在后

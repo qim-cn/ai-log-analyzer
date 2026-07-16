@@ -46,8 +46,25 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
   const fetchTree = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await obsidianService.getFileTree();
-      setTree(data.tree);
+      // 只加载设置中选中的浏览目录
+      const settings = await obsidianService.getSettings();
+      const paths = settings.browse_paths || [];
+      if (paths.length > 0) {
+        const trees = await Promise.all(paths.map(p => obsidianService.getFileTree(p)));
+        const combined: FileTreeNode[] = [];
+        trees.forEach((t, i) => {
+          const dirName = paths[i] || '(根目录)';
+          const children = (t.tree || []).filter((n: FileTreeNode) => n.type === 'folder' || n.name.endsWith('.md') || n.name.endsWith('.canvas') || n.name.endsWith('.txt') || n.name.endsWith('.ppt') || n.name.endsWith('.pptx') || n.name.endsWith('.pdf') || n.name.endsWith('.json'));
+          if (children.length > 0) {
+            combined.push({ name: dirName, path: paths[i], type: 'folder', children });
+          }
+        });
+        setTree(combined);
+      } else {
+        // 没有选择 → 加载全部
+        const data = await obsidianService.getFileTree();
+        setTree(data.tree);
+      }
     } catch (err) { console.error('获取文件树失败:', err); }
     finally { setLoading(false); }
   }, []);
