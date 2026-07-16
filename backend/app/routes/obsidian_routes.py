@@ -265,3 +265,20 @@ async def get_resolved_file(filename: str):
         return {"code": 404, "message": "文件不存在", "data": None}
     content = file_path.read_text(encoding="utf-8")
     return {"code": 0, "message": "success", "data": {"filename": filename, "content": content}}
+
+
+@router.delete("/resolved/file", response_model=dict)
+async def delete_resolved_file(filename: str, request: Request):
+    """删除已解决记录（仅管理员）"""
+    user = request.state.user
+    if user.role != UserRole.ADMIN:
+        return {"code": 403, "message": "权限不足，仅管理员可操作", "data": None}
+    rd = _resolved_dir()
+    file_path = (rd / filename).resolve()
+    if not str(file_path).startswith(str(rd.resolve())) or not file_path.exists():
+        return {"code": 404, "message": "文件不存在", "data": None}
+    try:
+        file_path.unlink()
+        return {"code": 0, "message": "已删除", "data": None}
+    except Exception as e:
+        return {"code": 500, "message": f"删除失败: {e}", "data": None}

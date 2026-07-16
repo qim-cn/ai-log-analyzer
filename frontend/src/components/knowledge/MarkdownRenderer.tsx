@@ -16,6 +16,17 @@ interface MarkdownRendererProps {
   onLinkClick?: (path: string) => void;
 }
 
+/** 安全提取 React children 的纯文本 */
+function reactNodeToText(node: React.ReactNode): string {
+  if (typeof node === 'string') return node;
+  if (typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(reactNodeToText).join('');
+  if (node && typeof node === 'object' && 'props' in node) {
+    return reactNodeToText((node as any).props.children);
+  }
+  return '';
+}
+
 export function MarkdownRenderer({ content, onLinkClick }: MarkdownRendererProps) {
   // 解析 Obsidian frontmatter
   const { frontmatter, body } = useMemo(() => parseFrontmatter(content), [content]);
@@ -44,15 +55,15 @@ export function MarkdownRenderer({ content, onLinkClick }: MarkdownRendererProps
         components={{
           // 标题加上 id，配合大纲面板跳转
           h1: ({ children, ...props }) => {
-            const text = String(children).replace(/[^a-zA-Z0-9一-鿿]/g, '-').slice(0, 40);
+            const text = reactNodeToText(children).replace(/[^a-zA-Z0-9一-鿿]/g, '-').slice(0, 50);
             return <h1 id={`heading-${text}`} className="scroll-mt-20" {...props}>{children}</h1>;
           },
           h2: ({ children, ...props }) => {
-            const text = String(children).replace(/[^a-zA-Z0-9一-鿿]/g, '-').slice(0, 40);
+            const text = reactNodeToText(children).replace(/[^a-zA-Z0-9一-鿿]/g, '-').slice(0, 50);
             return <h2 id={`heading-${text}`} className="scroll-mt-20" {...props}>{children}</h2>;
           },
           h3: ({ children, ...props }) => {
-            const text = String(children).replace(/[^a-zA-Z0-9一-鿿]/g, '-').slice(0, 40);
+            const text = reactNodeToText(children).replace(/[^a-zA-Z0-9一-鿿]/g, '-').slice(0, 50);
             return <h3 id={`heading-${text}`} className="scroll-mt-20" {...props}>{children}</h3>;
           },
           // 代码块

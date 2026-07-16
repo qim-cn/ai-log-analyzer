@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Search, FileText, Folder, FolderOpen, ChevronRight, ChevronDown,
-  RefreshCw, Terminal, CheckCircle2,
+  RefreshCw, Terminal, CheckCircle2, Trash2,
 } from 'lucide-react';
 import { obsidianService, type FileTreeNode } from '@/services/obsidianService';
 import { MarkdownRenderer } from '@/components/knowledge/MarkdownRenderer';
@@ -127,6 +127,20 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
     element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
+  const isAdmin = localStorage.getItem('user') ? (() => { try { return JSON.parse(localStorage.getItem('user') || '{}').role === 'admin'; } catch { return false; } })() : false;
+
+  const handleDeleteResolved = async (filename: string) => {
+    if (!confirm('确定删除这条已解决记录？')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const r = await fetch(`/api/obsidian/resolved/file?filename=${encodeURIComponent(filename)}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+      });
+      if (r.ok) { fetchResolved(); if (selectedPath === filename) { setSelectedPath(null); setFileContent(null); } }
+      else { const d = await r.json(); alert(d.message || '删除失败'); }
+    } catch (err) { alert('删除失败'); }
+  };
+
   const refreshAll = () => { fetchTree(); fetchResolved(); };
 
   return (
@@ -186,26 +200,36 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
               ) : (
                 <div className="space-y-0.5">
                   {resolvedFiles.map((f) => (
-                    <button
-                      key={f.filename}
-                      onClick={() => fetchResolvedContent(f.filename)}
-                      className={cn(
-                        'w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left transition-colors',
-                        selectedPath === f.filename
-                          ? 'bg-primary/10 text-primary border border-primary/20'
-                          : 'hover:bg-muted'
-                      )}
-                    >
-                      <FileText size={13} className={selectedPath === f.filename ? 'text-primary' : 'text-muted-foreground'} />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs truncate">{f.title}</div>
-                        {f.model && (
-                          <span className="text-[9px] px-1 py-0.5 rounded bg-primary/10 text-primary mt-0.5 inline-block">
-                            {f.model}
-                          </span>
+                    <div key={f.filename} className="group flex items-center">
+                      <button
+                        onClick={() => fetchResolvedContent(f.filename)}
+                        className={cn(
+                          'flex-1 flex items-center gap-2 px-2 py-2 rounded-lg text-left transition-colors',
+                          selectedPath === f.filename
+                            ? 'bg-primary/10 text-primary border border-primary/20'
+                            : 'hover:bg-muted'
                         )}
-                      </div>
-                    </button>
+                      >
+                        <FileText size={13} className={selectedPath === f.filename ? 'text-primary' : 'text-muted-foreground'} />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs truncate">{f.title}</div>
+                          {f.model && (
+                            <span className="text-[9px] px-1 py-0.5 rounded bg-primary/10 text-primary mt-0.5 inline-block">
+                              {f.model}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteResolved(f.filename); }}
+                          className="p-1 hover:bg-red-500/10 rounded opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                          title="删除"
+                        >
+                          <Trash2 size={12} className="text-muted-foreground hover:text-destructive" />
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
