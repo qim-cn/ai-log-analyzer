@@ -10,6 +10,8 @@ export interface ChatMessage {
   error?: string;
   status?: string;
   message?: string;
+  session_title?: string;
+  source?: string;
 }
 
 /**

@@ -5,6 +5,7 @@
 import { create } from 'zustand';
 import type { Message } from '@/types';
 import { messageService, sendMessage } from '@/services';
+import { useSessionStore } from './sessionStore';
 
 interface ChatState {
   messages: Message[];
@@ -81,7 +82,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
           set({ streamingContent: fullContent });
         }
 
-        if (chunk.done) break;
+        if (chunk.done) {
+          // 回传会话标题，触发侧栏刷新
+          if (chunk.session_title) {
+            useSessionStore.getState().renameSession(sessionId, chunk.session_title);
+          }
+          break;
+        }
       }
 
       const assistantMessage: Message = {
