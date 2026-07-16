@@ -44,7 +44,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [webdavUser, setWebdavUser] = useState('');
   const [webdavPass, setWebdavPass] = useState('');
   const [vaultPath, setVaultPath] = useState('');
-  const [autoSave, setAutoSave] = useState(false);
   const [savingObsidian, setSavingObsidian] = useState(false);
 
   // 远程目录浏览
@@ -116,7 +115,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       setWebdavUrl(settings.webdav_url);
       setWebdavUser(settings.webdav_user);
       setVaultPath(settings.vault_path);
-      setAutoSave(settings.auto_save);
     } catch (err) {
       console.error('获取知识库配置失败:', err);
     }
@@ -155,7 +153,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         webdav_user: webdavUser,
         webdav_pass: webdavPass || undefined,
         vault_path: vaultPath,
-        auto_save: autoSave,
+        auto_save: false,
       });
       await fetchObsidianSettings();
       alert('知识库配置已保存');
@@ -365,17 +363,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   </div>
                 </div>
               )}
-
-              <div className="flex items-center gap-3">
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" checked={autoSave} onChange={(e) => setAutoSave(e.target.checked)} className="sr-only peer" />
-                  <div className="w-9 h-5 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary" />
-                </label>
-                <div>
-                  <div className="text-sm font-medium">自动保存</div>
-                  <div className="text-[11px] text-muted-foreground/60">AI 分析完成后自动保存到知识库</div>
-                </div>
-              </div>
             </>
           ) : tab === 'rules' ? (
             <RulesPanel />

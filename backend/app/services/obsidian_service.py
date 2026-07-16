@@ -689,19 +689,15 @@ updated: {datetime.utcnow().isoformat()}Z
             return self._local_get_file_tree(path)
 
     async def _get_file_tree_webdav(self, path: str = "") -> list[dict]:
-        """通过 WebDAV 获取文件树"""
+        """通过 WebDAV 获取文件树（从 Vault 根目录开始浏览）"""
         config = _get_settings()
 
         auth = _webdav_auth(config["webdav_user"], config["webdav_pass"])
         base_url = config["webdav_url"].rstrip("/")
-        vault_path = config["vault_path"].strip("/")
 
-        full_path = vault_path
-        if path:
-            full_path = f"{vault_path}/{path.strip('/')}".rstrip("/")
-
+        full_path = path.strip("/") if path else ""
         dir_url = _make_webdav_url(base_url, full_path)
-        return await self._list_directory(base_url, auth, dir_url, full_path, vault_path)
+        return await self._list_directory(base_url, auth, dir_url, full_path, "")
 
     async def _list_directory(self, base_url, auth, dir_url, current_path, vault_path):
         """列出目录内容 (WebDAV)"""
