@@ -11,8 +11,6 @@ import { ChatInput } from './ChatInput';
 import { ExportButton } from '@/components/export/ExportButton';
 import { ComparePanel } from '@/components/compare/ComparePanel';
 import { useChatStore, useSessionStore, useLogStore } from '@/stores';
-import { templateService } from '@/services/templateService';
-import type { AnalysisTemplate } from '@/types';
 import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE } from '@/constants';
 import { cn, formatFileSize } from '@/utils';
 
@@ -39,15 +37,10 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showCompare, setShowCompare] = useState(false);
 
-  // 模板状态
-  const [templates, setTemplates] = useState<AnalysisTemplate[]>([]);
-
   useEffect(() => {
     clearMessages();
     fetchMessages(sessionId);
     fetchLogs(sessionId);
-    // 获取模板列表
-    templateService.list().then((data) => setTemplates(data.templates)).catch(() => {});
   }, [sessionId, fetchMessages, clearMessages, fetchLogs]);
 
   useEffect(() => {
@@ -150,16 +143,6 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
               <div className="text-sm text-muted-foreground mb-5 leading-relaxed">
                 上传日志文件后，可以问 AI 关于错误原因、根因分析、排查步骤等问题
               </div>
-              <div className="flex flex-wrap justify-center gap-2">
-                {['总结错误', '找出根因', '生成排查步骤'].map((q) => (
-                  <span
-                    key={q}
-                    className="px-3 py-1.5 rounded-full text-xs bg-muted text-muted-foreground"
-                  >
-                    {q}
-                  </span>
-                ))}
-              </div>
             </div>
           </div>
         ) : (
@@ -236,32 +219,6 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
             <span>{uploading ? '上传中...' : '上传日志'}</span>
           </button>
 
-          {/* 分隔 */}
-          <div className="w-px h-4 bg-border" />
-
-          {/* 快捷提问 — 动态模板（需要先上传日志） */}
-          {templates.slice(0, 6).map((tpl) => (
-            <button
-              key={tpl.id}
-              onClick={() => {
-                if (logFiles.length === 0) {
-                  alert('请先上传日志文件');
-                  return;
-                }
-                handleSend(tpl.prompt);
-              }}
-              disabled={streaming || logFiles.length === 0}
-              className={cn(
-                'px-2.5 py-1 rounded-full text-xs transition-colors',
-                logFiles.length === 0
-                  ? 'text-muted-foreground/40 cursor-not-allowed'
-                  : 'text-muted-foreground hover:bg-primary/10 hover:text-primary disabled:opacity-30'
-              )}
-              title={logFiles.length === 0 ? '请先上传日志文件' : ''}
-            >
-              {tpl.name}
-            </button>
-          ))}
         </div>
 
         {/* 输入框 */}

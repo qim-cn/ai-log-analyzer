@@ -9,7 +9,6 @@ import { useEffect, useCallback, useState } from 'react';
 import {
   FileText,
   Clock,
-  Sparkles,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
@@ -19,11 +18,10 @@ import { LogViewer } from './LogViewer';
 import { LogStats } from './LogStats';
 import { SimilarLogsPanel } from './SimilarLogsPanel';
 import { LogTimeline } from './LogTimeline';
-import { AnalysisWizard } from './AnalysisWizard';
 import { useLogStore, useChatStore } from '@/stores';
 import { cn } from '@/utils/cn';
 
-type PanelTab = 'files' | 'timeline' | 'wizard';
+type PanelTab = 'files' | 'timeline';
 
 interface LogPanelProps {
   sessionId: string;
@@ -42,7 +40,7 @@ export function LogPanel({ sessionId }: LogPanelProps) {
     selectLog,
   } = useLogStore();
 
-  const { setInputQuote, sendMessage } = useChatStore();
+  const { setInputQuote } = useChatStore();
 
   useEffect(() => {
     fetchLogs(sessionId);
@@ -70,13 +68,6 @@ export function LogPanel({ sessionId }: LogPanelProps) {
     []
   );
 
-  // 向导发送消息
-  const handleWizardMessage = useCallback(
-    (message: string) => {
-      sendMessage(sessionId, message);
-    },
-    [sessionId, sendMessage]
-  );
 
   return (
     <div className="h-full flex flex-col bg-card">
@@ -117,18 +108,6 @@ export function LogPanel({ sessionId }: LogPanelProps) {
           >
             <Clock className="inline h-3 w-3 mr-1" />
             时间线
-          </button>
-          <button
-            onClick={() => setActiveTab('wizard')}
-            className={cn(
-              'px-3 py-1.5 text-xs rounded-t-md transition-colors',
-              activeTab === 'wizard'
-                ? 'bg-muted text-foreground font-medium'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            <Sparkles className="inline h-3 w-3 mr-1" />
-            向导
           </button>
         </div>
       </div>
@@ -188,16 +167,9 @@ export function LogPanel({ sessionId }: LogPanelProps) {
             </div>
           )}
         </>
-      ) : activeTab === 'timeline' ? (
+      ) : (
         <div className="flex-1 overflow-hidden">
           <LogTimeline sessionId={sessionId} />
-        </div>
-      ) : (
-        <div className="flex-1 overflow-hidden p-3">
-          <AnalysisWizard
-            onSendMessage={handleWizardMessage}
-            onClose={() => setActiveTab('files')}
-          />
         </div>
       )}
     </div>
