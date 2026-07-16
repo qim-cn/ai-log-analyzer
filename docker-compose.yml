@@ -25,11 +25,11 @@ services:
       - DATABASE_PATH=/data/app.db
       - LOG_STORAGE_PATH=/data/logs
       - MAX_FILE_SIZE_MB=50
-      - OBSIDIAN_LOCAL_PATH=/vault
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - NO_PROXY=192.168.31.5,localhost,127.0.0.1
+      - no_proxy=192.168.31.5,localhost,127.0.0.1
     volumes:
       - app-data:/data
-      - /mnt/obsidian/奇梦网络工坊:/vault:rw
     restart: unless-stopped
     networks:
       - app-network

@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_WEBDAV_URL = os.getenv("OBSIDIAN_WEBDAV_URL", "")
 DEFAULT_WEBDAV_USER = os.getenv("OBSIDIAN_WEBDAV_USER", "")
 DEFAULT_WEBDAV_PASS = os.getenv("OBSIDIAN_WEBDAV_PASS", "")
-DEFAULT_VAULT_PATH = "/服务器维修笔记/DEBUG记录/"
+DEFAULT_VAULT_PATH = os.getenv("OBSIDIAN_VAULT_PATH", "/服务器维修笔记/AI分析记录/")
 
 # 本地文件系统配置
 LOCAL_VAULT_PATH = os.getenv("OBSIDIAN_LOCAL_PATH", "/vault")
@@ -122,7 +122,7 @@ async def _webdav_list(url: str, auth: httpx.BasicAuth | None) -> list[dict]:
 
             # 解析 XML 响应 - 支持 D: 和 d: 前缀
             href_pattern = re.compile(r"<(?:d:|D:)href>([^<]+)</(?:d:|D:)href>")
-            collection_pattern = re.compile(r"<(?:d:|D:)collection/>")
+            collection_pattern = re.compile(r"<(?:d:|D:)collection\b[^>]*/>")
             response_pattern = re.compile(r"<(?:d:|D:)response>(.*?)</(?:d:|D:)response>", re.DOTALL)
 
             responses = response_pattern.findall(text)
