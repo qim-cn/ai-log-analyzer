@@ -691,55 +691,40 @@ updated: {datetime.utcnow().isoformat()}Z
     async def _get_file_tree_webdav(self, path: str = "") -> list[dict]:
         """通过 WebDAV 获取文件树（从 Vault 根目录开始浏览）"""
         config = _get_settings()
-
         auth = _webdav_auth(config["webdav_user"], config["webdav_pass"])
         base_url = config["webdav_url"].rstrip("/")
 
-        full_path = path.strip("/") if path else ""
-        dir_url = _make_webdav_url(base_url, full_path)
-        return await self._list_directory(base_url, auth, dir_url, full_path, "")
+        from urllib.parse import urlparse
+        p = urlparse(base_url)
+        self._webdav_root = f"{p.scheme}://{p.netloc}"
+        self._base_path = unquote(p.path.strip("/"))  # e.g. "Obsidian Vault"
 
-    async def _list_directory(self, base_url, auth, dir_url, current_path, vault_path):
-        """列出目录内容 (WebDAV)"""
+        dir_url = f"{self._webdav_root}/{self._base_path}/{path.strip('/')}" if path.strip("/") else base_url
+        return await self._list_dir(auth, dir_url)
+
+    async def _list_dir(self, auth, dir_url):
+        """列出目录内容 (WebDAV)，href 直接用于递归拼接"""
         items = await _webdav_list(dir_url, auth)
+        from urllib.parse import urlparse
+        cur = urlparse(dir_url).path.rstrip("/")
 
         result = []
         for item in items:
             name = item["name"]
             href = item["href"]
+            if name.startswith("."): continue
+            if unquote(href.rstrip("/")) == unquote(cur): continue
 
-            # 跳过当前目录和隐藏目录/文件
-            if name.startswith("."):
-                continue
-            decoded_href = unquote(href.rstrip("/"))
-            decoded_current = unquote(current_path.rstrip("/"))
-            if decoded_href.split("/")[-1] == decoded_current.split("/")[-1]:
-                continue
-
-            # 构建相对路径
-            from urllib.parse import urlparse
-            decoded_href = unquote(href)
-            base_path = urlparse(base_url).path.rstrip("/")
-            rel_path = decoded_href
-            if rel_path.startswith(base_path):
-                rel_path = rel_path[len(base_path):]
-            rel_path = rel_path.strip("/")
-            vault_path_clean = vault_path.strip("/")
-            if rel_path.startswith(vault_path_clean + "/"):
-                rel_path = rel_path[len(vault_path_clean) + 1:]
-            elif rel_path == vault_path_clean:
-                rel_path = ""
-            rel_path = unquote(rel_path)
+            # 相对路径：去掉 /Obsidian Vault/ 前缀
+            raw = unquote(href).lstrip("/")
+            bp = self._base_path + "/" if self._base_path else ""
+            rel = raw.removeprefix(bp) if bp else raw
 
             if item.get("is_collection"):
-                children = await self._list_directory(base_url, auth, _make_webdav_url(base_url, href), href.strip("/"), vault_path)
-                result.append({
-                    "name": name, "path": rel_path, "type": "folder", "children": children,
-                })
+                children = await self._list_dir(auth, f"{self._webdav_root}{href}")
+                result.append({"name": name, "path": rel, "type": "folder", "children": children})
             elif name.endswith((".md", ".canvas", ".txt", ".log", ".csv", ".json", ".yaml", ".yml", ".py", ".sh", ".conf")):
-                result.append({
-                    "name": name, "path": rel_path, "type": "file",
-                })
+                result.append({"name": name, "path": rel, "type": "file"})
 
         # 排序：目录在前，文件在后
         result.sort(key=lambda x: (0 if x["type"] == "folder" else 1, x["name"].lower()))
