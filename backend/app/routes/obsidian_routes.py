@@ -44,10 +44,9 @@ async def save_note(body: SaveNoteRequest, request: Request):
         raise ValidationError("分析结果不能为空")
 
     user = request.state.user
-    config = obsidian_service.get_settings()
     result = await obsidian_service.save_note(
         title=body.title,
-        save_path=config.get("resolved_path", ""),
+        save_path=body.model,  # 机型作为子目录
         log_summary=body.log_summary or "",
         log_snippet=body.log_snippet or "",
         analysis=body.analysis,

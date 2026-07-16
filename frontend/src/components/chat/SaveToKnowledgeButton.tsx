@@ -1,8 +1,6 @@
 /**
  * 保存到知识库按钮
- * AI 回复下方显示，点击弹出保存表单
- * 用户填写：故障标题 + 实际维修操作
- * 保存目录使用设置中配置的路径
+ * 用户填写：机型 + 故障标题 + 维修操作（必填）
  */
 
 import { useState } from 'react';
@@ -18,25 +16,25 @@ interface SaveToKnowledgeButtonProps {
 }
 
 export function SaveToKnowledgeButton({
-  logFilename,
-  logSummary,
-  logSnippet,
-  analysis,
-  sessionId,
+  logSummary, logSnippet, analysis, sessionId,
 }: SaveToKnowledgeButtonProps) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [model, setModel] = useState('');
   const [title, setTitle] = useState('');
   const [repairNotes, setRepairNotes] = useState('');
   const [error, setError] = useState('');
 
   const handleSave = async () => {
+    if (!model.trim()) { setError('请输入机型'); return; }
     if (!title.trim()) { setError('请输入故障标题'); return; }
+    if (!repairNotes.trim()) { setError('请填写维修操作'); return; }
     setSaving(true); setError('');
     try {
       await obsidianService.save({
         title: title.trim(),
+        model: model.trim(),
         log_summary: logSummary || '',
         log_snippet: logSnippet || '',
         analysis,
@@ -55,13 +53,10 @@ export function SaveToKnowledgeButton({
     <>
       <button
         onClick={() => {
-          setTitle(logFilename?.replace(/\.[^.]+$/, '') + ' 故障' || '');
-          setRepairNotes('');
-          setShowForm(true);
+          setModel(''); setTitle(''); setRepairNotes(''); setShowForm(true);
         }}
         className="flex items-center gap-1.5 text-xs text-muted-foreground
-                   hover:text-primary px-2 py-1 rounded-md hover:bg-primary/5
-                   transition-colors"
+                   hover:text-primary px-2 py-1 rounded-md hover:bg-primary/5 transition-colors"
       >
         <Save size={12} />
         <span>保存到知识库</span>
@@ -77,21 +72,37 @@ export function SaveToKnowledgeButton({
             </div>
 
             <div className="px-5 pb-3 space-y-3">
+              {/* 机型 */}
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">故障标题</label>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                  机型 <span className="text-destructive">*</span>
+                </label>
+                <input type="text" value={model} onChange={e => setModel(e.target.value)}
+                  placeholder="如: 7500S, 7DPC, R750"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-input bg-background text-xs
+                             focus:outline-none focus:ring-2 focus:ring-primary/30" autoFocus />
+              </div>
+
+              {/* 故障标题 */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                  故障标题 <span className="text-destructive">*</span>
+                </label>
                 <input type="text" value={title} onChange={e => setTitle(e.target.value)}
                   placeholder="如: HBA-PHY5-storcli2超时"
                   className="w-full px-2.5 py-1.5 rounded-lg border border-input bg-background text-xs
                              focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  onKeyDown={e => e.key === 'Enter' && handleSave()} autoFocus />
+                  onKeyDown={e => e.key === 'Enter' && handleSave()} />
               </div>
 
+              {/* 维修操作（必填） */}
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                  维修操作 <span className="text-[10px] opacity-60">（填写实际处理过程）</span>
+                  维修操作 <span className="text-destructive">*</span>
+                  <span className="text-[10px] opacity-60">（必填：实际处理过程）</span>
                 </label>
                 <textarea value={repairNotes} onChange={e => setRepairNotes(e.target.value)}
-                  placeholder="如：重插拔 Bay3 对应背板连接器并清洁金手指后重跑测试通过"
+                  placeholder="如：重插拔Bay3背板连接器并清洁金手指后重跑测试通过，未更换任何部件"
                   rows={3}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-input bg-background text-xs
                              focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none" />
@@ -100,7 +111,7 @@ export function SaveToKnowledgeButton({
               {error && <div className="text-xs text-destructive">{error}</div>}
               {saved && (
                 <div className="flex items-center gap-1.5 text-xs text-emerald-600">
-                  <CheckCircle2 size={12} /> 已保存到知识库
+                  <CheckCircle2 size={12} /> 已保存 → 已解决/{model || '根'}/{title}
                 </div>
               )}
             </div>

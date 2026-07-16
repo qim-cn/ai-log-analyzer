@@ -26,9 +26,10 @@ export interface SearchResult {
 }
 
 export const obsidianService = {
-  /** 保存分析结果。repair_notes=用户填写, resolved=true, session_id=标记已解决 */
+  /** 保存分析结果。model=机型(子目录), repair_notes=维修操作, session_id=标记已解决 */
   save: (data: {
     title: string;
+    model?: string;
     log_summary?: string;
     log_snippet?: string;
     analysis: string;
