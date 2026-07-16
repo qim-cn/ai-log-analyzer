@@ -46,25 +46,29 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
   const fetchTree = useCallback(async () => {
     setLoading(true);
     try {
-      // 只加载设置中选中的浏览目录
-      const r = await fetch('/api/obsidian/browse-paths');
-      const d = await r.json();
-      const paths: string[] = d.data?.browse_paths || [];
+      // 读配置：只加载设置中选中的浏览目录
+      const cfg = await fetch('/api/obsidian/browse-paths');
+      const cd = await cfg.json();
+      const paths: string[] = cd.data?.browse_paths || [];
       if (paths.length > 0) {
-        const trees = await Promise.all(paths.map(p => obsidianService.getFileTree(p)));
+        const trees = await Promise.all(paths.map(p =>
+          fetch(`/api/obsidian/tree?path=${encodeURIComponent(p)}`).then(r => r.json())
+        ));
         const combined: FileTreeNode[] = [];
         trees.forEach((t, i) => {
           const dirName = paths[i] || '(根目录)';
-          const children = (t.tree || []).filter((n: FileTreeNode) => n.type === 'folder' || n.name.endsWith('.md') || n.name.endsWith('.canvas') || n.name.endsWith('.txt') || n.name.endsWith('.ppt') || n.name.endsWith('.pptx') || n.name.endsWith('.pdf') || n.name.endsWith('.json'));
-          if (children.length > 0) {
-            combined.push({ name: dirName, path: paths[i], type: 'folder', children });
+          const items = (t.data?.tree || []).filter((n: FileTreeNode) =>
+            n.type === 'folder' || /\.(md|canvas|txt|ppt|pptx|pdf|json|log|csv|sh|py|yaml|yml|conf)$/i.test(n.name));
+          if (items.length > 0) {
+            combined.push({ name: dirName, path: paths[i], type: 'folder', children: items });
           }
         });
         setTree(combined);
       } else {
-        // 没有选择 → 加载全部
-        const data = await obsidianService.getFileTree();
-        setTree(data.tree);
+        // 没有选择 → 加载根目录
+        const r = await fetch('/api/obsidian/tree');
+        const d = await r.json();
+        setTree(d.data?.tree || []);
       }
     } catch (err) { console.error('获取文件树失败:', err); }
     finally { setLoading(false); }
@@ -80,13 +84,14 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
     finally { setResolvedLoading(false); }
   }, []);
 
-  useEffect(() => { fetchTree(); fetchResolved(); }, [fetchTree, fetchResolved]);
+  useEffect(() => { fetchTree(); fetchResolved(); }, [fetchTree, fetchResolved, activeView]);
 
   const fetchContent = useCallback(async (path: string) => {
     setLoadingContent(true);
     try {
-      const data = await obsidianService.getFileContent(path);
-      setFileContent(data.content);
+      const r = await fetch(`/api/obsidian/file?path=${encodeURIComponent(path)}`);
+      const d = await r.json();
+      setFileContent(d.data?.content || '');
     } catch (err) { setFileContent('加载失败'); }
     finally { setLoadingContent(false); }
   }, []);
