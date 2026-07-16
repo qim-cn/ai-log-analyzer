@@ -8,10 +8,11 @@ from pydantic import BaseModel
 class SaveNoteRequest(BaseModel):
     """保存笔记请求"""
     title: str
+    model: str = ""           # 机型，如 7500S、R750 等
     log_summary: str = ""
     log_snippet: str = ""
     analysis: str
-    resolved: bool = False  # True→已解决/ False→AI分析记录/
+    resolved: bool = False
 
 
 class ObsidianSettingsResponse(BaseModel):

@@ -46,6 +46,7 @@ async def save_note(body: SaveNoteRequest, request: Request):
     user = request.state.user
     result = await obsidian_service.save_note(
         title=body.title,
+        model=body.model,
         log_summary=body.log_summary or "",
         log_snippet=body.log_snippet or "",
         analysis=body.analysis,
@@ -205,16 +206,19 @@ RESOLVED_DIR = Path("/resolved")
 
 @router.get("/resolved/list", response_model=dict)
 async def list_resolved():
-    """列出已解决的故障记录"""
+    """列出已解决的故障记录（支持机型子目录）"""
     files = []
     if RESOLVED_DIR.exists():
-        for f in sorted(RESOLVED_DIR.glob("*.md"), key=lambda p: p.name, reverse=True):
-            if f.name == "index.md":
+        for md in sorted(RESOLVED_DIR.rglob("*.md"), key=lambda p: p.name, reverse=True):
+            if md.name == "index.md" or ".obsidian" in md.parts or ".trash" in md.parts:
                 continue
-            stat = f.stat()
+            rel = md.relative_to(RESOLVED_DIR)
+            stat = md.stat()
+            model = str(rel.parent) if str(rel.parent) != "." else ""
             files.append({
-                "filename": f.name,
-                "title": f.stem,
+                "filename": str(rel),
+                "title": md.stem,
+                "model": model,
                 "size": stat.st_size,
                 "mtime": stat.st_mtime,
             })
@@ -223,7 +227,7 @@ async def list_resolved():
 
 @router.get("/resolved/file", response_model=dict)
 async def get_resolved_file(filename: str):
-    """读取已解决记录的内容"""
+    """读取已解决记录的内容（路径相对于 /resolved/）"""
     file_path = (RESOLVED_DIR / filename).resolve()
     if not str(file_path).startswith(str(RESOLVED_DIR.resolve())) or not file_path.exists():
         return {"code": 404, "message": "文件不存在", "data": None}

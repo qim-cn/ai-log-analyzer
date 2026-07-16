@@ -26,9 +26,10 @@ export interface SearchResult {
 }
 
 export const obsidianService = {
-  /** 保存分析结果到知识库。resolved=true → 已解决/ */
+  /** 保存分析结果。resolved=true + model → 已解决/{机型}/ */
   save: (data: {
     title: string;
+    model?: string;
     log_summary?: string;
     log_snippet?: string;
     analysis: string;

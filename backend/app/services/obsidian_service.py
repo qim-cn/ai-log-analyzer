@@ -160,45 +160,49 @@ def _sanitize_filename(title: str) -> str:
 
 def generate_note_content(
     title: str,
+    model: str,
     log_summary: str,
     log_snippet: str,
     analysis: str,
     user: str = "admin",
 ) -> str:
-    """生成 Obsidian 笔记内容"""
+    """生成已解决的笔记内容：机型+标题、关键字段+原因+方法+方案+改善"""
     now = datetime.utcnow().isoformat() + "Z"
     sections = parse_analysis(analysis)
 
+    # 提取日志关键字段（前 10 行非空行）
+    key_lines = [l for l in log_snippet.strip().split("\n") if l.strip()][:10]
+    key_fields = "\n".join(key_lines) if key_lines else log_snippet[:500]
+
     content = f"""---
+model: {model}
 title: {title}
 date: {now}
 user: {user}
-type: log-analysis
+type: resolved
 tags:
-  - log-analysis
-  - debug
+  - resolved
+  - {model}
 ---
 
-# {title}
+# [{model}] {title}
 
-## 原始日志
+## 📋 日志关键字段
 ```log
-{log_snippet}
+{key_fields}
 ```
 
-## AI 分析结果
-
-### 📋 日志概要
-{sections.get('summary', log_summary)}
-
-### 🔍 故障原因分析
+## 🔍 AI 分析 — 可能原因
 {sections.get('cause', '（分析结果解析失败，请查看原始分析）')}
 
-### 🛠️ 具体解决方案
+## 🛠️ 排查方法
+{sections.get('method', '（待补充）')}
+
+## ✅ 解决方案
 {sections.get('solution', '（分析结果解析失败，请查看原始分析）')}
 
-### 📌 总结
-{sections.get('conclusion', '（分析结果解析失败，请查看原始分析）')}
+## 📈 后续改善
+{sections.get('improvement', '（待补充）')}
 """
     return content
 
@@ -208,8 +212,10 @@ def parse_analysis(analysis: str) -> dict:
     sections = {
         "summary": "",
         "cause": "",
+        "method": "",
         "solution": "",
         "conclusion": "",
+        "improvement": "",
     }
 
     lines = analysis.split("\n")
@@ -224,15 +230,25 @@ def parse_analysis(analysis: str) -> dict:
                 sections[current_section] = "\n".join(current_content)
             current_section = "summary"
             current_content = []
-        elif any(kw in lower for kw in ["故障原因", "原因分析", "根因", "根本原因"]):
+        elif any(kw in lower for kw in ["故障原因", "原因分析", "根因", "可能原因"]):
             if current_section and current_content:
                 sections[current_section] = "\n".join(current_content)
             current_section = "cause"
             current_content = []
-        elif any(kw in lower for kw in ["解决方案", "解决方法", "处理方案", "维修建议", "排查步骤"]):
+        elif any(kw in lower for kw in ["排查方法", "排查过程", "诊断方法", "方法"]):
+            if current_section and current_content:
+                sections[current_section] = "\n".join(current_content)
+            current_section = "method"
+            current_content = []
+        elif any(kw in lower for kw in ["解决方案", "解决方法", "处理方案", "维修建议"]):
             if current_section and current_content:
                 sections[current_section] = "\n".join(current_content)
             current_section = "solution"
+            current_content = []
+        elif any(kw in lower for kw in ["后续改善", "改善建议", "预防措施", "改进", "后续"]):
+            if current_section and current_content:
+                sections[current_section] = "\n".join(current_content)
+            current_section = "improvement"
             current_content = []
         elif any(kw in lower for kw in ["总结", "结论"]):
             if current_section and current_content:
@@ -402,6 +418,7 @@ class ObsidianService:
     def _local_save_note(
         self,
         title: str,
+        model: str,
         log_summary: str,
         log_snippet: str,
         analysis: str,
@@ -417,7 +434,7 @@ class ObsidianService:
         filename = f"{date_str}_{safe_title}.md"
 
         content = generate_note_content(
-            title=title,
+            title=title, model=model,
             log_summary=log_summary,
             log_snippet=log_snippet,
             analysis=analysis,
@@ -496,43 +513,43 @@ class ObsidianService:
     async def save_note(
         self,
         title: str,
+        model: str,
         log_summary: str,
         log_snippet: str,
         analysis: str,
         user: str = "admin",
         resolved: bool = False,
     ) -> dict:
-        """保存笔记。resolved=True → 写入本地 /resolved/；否则走 WebDAV"""
+        """保存笔记。resolved=True → 写入本地 /resolved/{model}/"""
         if resolved:
-            return self._save_resolved_local(title, log_summary, log_snippet, analysis, user)
+            return self._save_resolved_local(title, model, log_summary, log_snippet, analysis, user)
         if self._is_webdav_configured():
-            return await self._save_note_webdav(title, log_summary, log_snippet, analysis, user, False)
+            return await self._save_note_webdav(title, model, log_summary, log_snippet, analysis, user, False)
         else:
-            return self._local_save_note(title, log_summary, log_snippet, analysis, user, False)
+            return self._local_save_note(title, model, log_summary, log_snippet, analysis, user, False)
 
     def _save_resolved_local(
-        self, title: str, log_summary: str, log_snippet: str,
+        self, title: str, model: str, log_summary: str, log_snippet: str,
         analysis: str, user: str = "admin",
     ) -> dict:
-        """已解决 → 直接写 /resolved/ 目录（SMB 挂载）"""
-        import os as _os
-        resolved_dir = Path("/resolved")
-        resolved_dir.mkdir(parents=True, exist_ok=True)
+        """已解决 → /resolved/{机型}/{标题}.md"""
+        model_dir = Path("/resolved") / _sanitize_filename(model) if model else Path("/resolved")
+        model_dir.mkdir(parents=True, exist_ok=True)
 
         date_str = datetime.utcnow().strftime("%Y-%m-%d")
         safe_title = _sanitize_filename(title)
         filename = f"{date_str}_{safe_title}.md"
 
         content = generate_note_content(
-            title=title, log_summary=log_summary, log_snippet=log_snippet,
+            title=title, model=model, log_summary=log_summary, log_snippet=log_snippet,
             analysis=analysis, user=user,
         )
 
-        file_path = resolved_dir / filename
+        file_path = model_dir / filename
         try:
             file_path.write_text(content, encoding="utf-8")
             logger.info(f"Resolved note saved: {file_path}")
-            return {"success": True, "filename": filename, "message": "已保存到已解决目录"}
+            return {"success": True, "filename": str(file_path.relative_to(Path("/resolved"))) + "" if model else filename, "message": "已保存到已解决目录"}
         except Exception as e:
             logger.error(f"Failed to save resolved note: {e}")
             return {"success": False, "filename": "", "message": f"保存失败: {e}"}
@@ -540,6 +557,7 @@ class ObsidianService:
     async def _save_note_webdav(
         self,
         title: str,
+        model: str,
         log_summary: str,
         log_snippet: str,
         analysis: str,
@@ -563,7 +581,7 @@ class ObsidianService:
         filename = f"{date_str}_{safe_title}.md"
 
         content = generate_note_content(
-            title=title,
+            title=title, model=model,
             log_summary=log_summary,
             log_snippet=log_snippet,
             analysis=analysis,

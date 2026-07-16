@@ -23,6 +23,7 @@ interface KnowledgePageProps {
 interface ResolvedFile {
   filename: string;
   title: string;
+  model: string;
   size: number;
   mtime: number;
 }
@@ -175,6 +176,11 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
                       <FileText size={13} className={selectedPath === f.filename ? 'text-primary' : 'text-muted-foreground'} />
                       <div className="min-w-0 flex-1">
                         <div className="text-xs truncate">{f.title}</div>
+                        {f.model && (
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-primary/10 text-primary mt-0.5 inline-block">
+                            {f.model}
+                          </span>
+                        )}
                       </div>
                     </button>
                   ))}
