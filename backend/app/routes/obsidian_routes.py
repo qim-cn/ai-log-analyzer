@@ -44,11 +44,27 @@ async def save_note(body: SaveNoteRequest, request: Request):
         raise ValidationError("分析结果不能为空")
 
     user = request.state.user
+    # 如果前端没传日志，从数据库根据 session_id 补
+    log_snippet = body.log_snippet or ""
+    log_summary = body.log_summary or ""
+    if (not log_snippet or not log_summary) and body.session_id:
+        try:
+            from app.repositories.log_repository import log_repository
+            logs = log_repository.get_by_session(body.session_id)
+            if logs:
+                if not log_snippet:
+                    log_snippet = "\n".join(
+                        (l.content or "")[:3000] for l in logs if l.content
+                    )[:10000]
+                if not log_summary:
+                    log_summary = ", ".join(l.filename for l in logs)
+        except Exception:
+            pass
     result = await obsidian_service.save_note(
         title=body.title,
         save_path=body.model,  # 机型作为子目录
-        log_summary=body.log_summary or "",
-        log_snippet=body.log_snippet or "",
+        log_summary=log_summary,
+        log_snippet=log_snippet,
         analysis=body.analysis,
         repair_notes=body.repair_notes,
         user=user.username,
