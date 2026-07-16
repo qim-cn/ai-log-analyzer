@@ -8,10 +8,10 @@ from pydantic import BaseModel
 class SaveNoteRequest(BaseModel):
     """保存笔记请求"""
     title: str
-    save_path: str = ""         # 用户指定保存子目录（如 7500S），空=根目录
     log_summary: str = ""
     log_snippet: str = ""
     analysis: str
+    repair_notes: str = ""      # 用户填写的实际维修操作过程
     resolved: bool = False
 
 

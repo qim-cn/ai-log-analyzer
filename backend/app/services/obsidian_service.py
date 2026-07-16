@@ -167,15 +167,18 @@ def generate_note_content(
     log_summary: str,
     log_snippet: str,
     analysis: str,
+    repair_notes: str = "",
     user: str = "admin",
 ) -> str:
-    """生成已解决的笔记内容：机型+标题、关键字段+原因+方法+方案+改善"""
+    """生成已解决的笔记内容。repair_notes 为用户填写，没有则用 AI 分析结果"""
     now = datetime.utcnow().isoformat() + "Z"
     sections = parse_analysis(analysis)
 
     # 提取日志关键字段（前 10 行非空行）
     key_lines = [l for l in log_snippet.strip().split("\n") if l.strip()][:10]
     key_fields = "\n".join(key_lines) if key_lines else log_snippet[:500]
+
+    repair_content = repair_notes.strip() if repair_notes else sections.get('solution', '（待补充）')
 
     content = f"""---
 model: {model}
@@ -202,7 +205,7 @@ tags:
 {sections.get('method', '（待补充）')}
 
 ## 🔧 维修操作
-{sections.get('solution', '（待补充）')}
+{repair_content}
 
 ## ⚠️ 批量风险评估
 {sections.get('improvement', '（个案处理，暂不升级）')}
@@ -419,14 +422,8 @@ class ObsidianService:
         return notes
 
     def _local_save_note(
-        self,
-        title: str,
-        save_path: str,
-        log_summary: str,
-        log_snippet: str,
-        analysis: str,
-        user: str = "admin",
-        resolved: bool = False,
+        self, title: str, save_path: str, log_summary: str, log_snippet: str,
+        analysis: str, repair_notes: str = "", user: str = "admin", resolved: bool = False,
     ) -> dict:
         """保存笔记到本地文件系统"""
         vault_dir = self._get_local_vault_dir(resolved)
@@ -441,6 +438,7 @@ class ObsidianService:
             log_summary=log_summary,
             log_snippet=log_snippet,
             analysis=analysis,
+            repair_notes=repair_notes,
             user=user,
         )
 
@@ -522,20 +520,21 @@ class ObsidianService:
         log_summary: str = "",
         log_snippet: str = "",
         analysis: str = "",
+        repair_notes: str = "",
         user: str = "admin",
         resolved: bool = False,
     ) -> dict:
-        """保存笔记。resolved=True → 写入本地 /resolved/{save_path}/"""
+        """保存笔记。resolved=True → 写入本地。repair_notes 由用户填写"""
         if resolved:
-            return self._save_resolved_local(title, save_path, log_summary, log_snippet, analysis, user)
+            return self._save_resolved_local(title, save_path, log_summary, log_snippet, analysis, repair_notes, user)
         if self._is_webdav_configured():
-            return await self._save_note_webdav(title, save_path, log_summary, log_snippet, analysis, user, False)
+            return await self._save_note_webdav(title, save_path, log_summary, log_snippet, analysis, repair_notes, user, False)
         else:
-            return self._local_save_note(title, save_path, log_summary, log_snippet, analysis, user, False)
+            return self._local_save_note(title, save_path, log_summary, log_snippet, analysis, repair_notes, user, False)
 
     def _save_resolved_local(
         self, title: str, save_path: str, log_summary: str, log_snippet: str,
-        analysis: str, user: str = "admin",
+        analysis: str, repair_notes: str = "", user: str = "admin",
     ) -> dict:
         """已解决 → /resolved/{resolved_path}/{save_path}/{标题}.md"""
         config = _get_settings()
@@ -551,7 +550,7 @@ class ObsidianService:
 
         content = generate_note_content(
             title=title, model=clean_path, log_summary=log_summary, log_snippet=log_snippet,
-            analysis=analysis, user=user,
+            analysis=analysis, repair_notes=repair_notes, user=user,
         )
 
         file_path = target_dir / filename
@@ -565,14 +564,8 @@ class ObsidianService:
             return {"success": False, "filename": "", "message": f"保存失败: {e}"}
 
     async def _save_note_webdav(
-        self,
-        title: str,
-        save_path: str,
-        log_summary: str,
-        log_snippet: str,
-        analysis: str,
-        user: str = "admin",
-        resolved: bool = False,
+        self, title: str, save_path: str, log_summary: str, log_snippet: str,
+        analysis: str, repair_notes: str = "", user: str = "admin", resolved: bool = False,
     ) -> dict:
         """通过 WebDAV 保存笔记"""
         config = _get_settings()
@@ -595,6 +588,7 @@ class ObsidianService:
             log_summary=log_summary,
             log_snippet=log_snippet,
             analysis=analysis,
+            repair_notes=repair_notes,
             user=user,
         )
 

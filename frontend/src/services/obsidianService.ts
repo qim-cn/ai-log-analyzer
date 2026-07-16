@@ -26,13 +26,13 @@ export interface SearchResult {
 }
 
 export const obsidianService = {
-  /** 保存分析结果。resolved=true → 已解决/{save_path}/ */
+  /** 保存分析结果。repair_notes=用户填写, resolved=true */
   save: (data: {
     title: string;
-    save_path?: string;
     log_summary?: string;
     log_snippet?: string;
     analysis: string;
+    repair_notes?: string;
     resolved?: boolean;
   }) => http.post<{ success: boolean; filename: string; message: string }>('/obsidian/save', data),
 
