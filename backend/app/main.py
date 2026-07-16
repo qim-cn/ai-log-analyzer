@@ -71,6 +71,14 @@ async def lifespan(app: FastAPI):
     from app.services.webhook_service import init_webhooks_table
     init_webhooks_table()
 
+    # 初始化 Linux 故障排查知识库
+    from app.services.linux_knowledge_service import (
+        init_linux_knowledge_table,
+        seed_linux_knowledge,
+    )
+    init_linux_knowledge_table()
+    seed_linux_knowledge()
+
     # 迁移：将没有 user_id 的会话归属管理员
     from app.config.database import get_connection
     from app.repositories.user_repository import user_repository

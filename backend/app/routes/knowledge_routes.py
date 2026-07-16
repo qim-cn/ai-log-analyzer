@@ -311,3 +311,55 @@ async def get_trends(session_id: str = None, days: int = 7):
         "message": "success",
         "data": result,
     }
+
+
+# ============================================================
+# Linux 故障排查知识库 API
+# ============================================================
+
+from app.services.linux_knowledge_service import (
+    search_linux_knowledge,
+    list_categories,
+    get_knowledge_stats,
+)
+
+
+@router.get("/linux/search", response_model=dict)
+async def search_linux_kb(
+    q: str = "",
+    category: str = "",
+    limit: int = 20,
+):
+    """搜索 Linux 知识库。q=关键词, category=分类过滤, limit=返回数量"""
+    results = search_linux_knowledge(
+        query=q.strip(),
+        category=category.strip(),
+        limit=min(limit, 100),
+    )
+    stats = get_knowledge_stats()
+
+    return {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "query": q.strip(),
+            "category": category.strip(),
+            "total": len(results),
+            "db_total": stats["total_entries"],
+            "results": results,
+        },
+    }
+
+
+@router.get("/linux/categories", response_model=dict)
+async def get_linux_kb_categories():
+    """获取知识库分类列表及条目数"""
+    categories = list_categories()
+    return {"code": 0, "message": "success", "data": categories}
+
+
+@router.get("/linux/stats", response_model=dict)
+async def get_linux_kb_stats():
+    """获取知识库统计"""
+    stats = get_knowledge_stats()
+    return {"code": 0, "message": "success", "data": stats}

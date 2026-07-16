@@ -15,11 +15,12 @@ from app.services.auth_service import auth_service
 
 logger = logging.getLogger(__name__)
 
-# 不需要认证的路径
-PUBLIC_PATHS = {
+# 不需要认证的路径（前缀匹配）
+PUBLIC_PATH_PREFIXES = {
     "/api/auth/login",
     "/api/auth/setup",
     "/api/health",
+    "/api/knowledge/linux",   # Linux 知识库公开
     "/metrics",
 }
 
@@ -30,8 +31,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         path = request.url.path
 
-        # 公开路径不需要认证
-        if path in PUBLIC_PATHS:
+        # 公开路径不需要认证（支持前缀匹配）
+        if any(path.startswith(prefix) for prefix in PUBLIC_PATH_PREFIXES):
             return await call_next(request)
 
         # OPTIONS 请求不需要认证
