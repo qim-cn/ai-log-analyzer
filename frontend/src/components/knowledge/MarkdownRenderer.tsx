@@ -7,8 +7,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Check, Info, AlertTriangle, AlertCircle, Lightbulb } from 'lucide-react';
-import { useState, useCallback } from 'react';
+import { Copy, Check, Info, AlertTriangle, AlertCircle, Lightbulb, Tag, Folder, Calendar, Hash, FileText, ArrowUpRight } from 'lucide-react';
+import { useState, useCallback, useMemo } from 'react';
 import { cn } from '@/utils';
 
 interface MarkdownRendererProps {
@@ -17,11 +17,18 @@ interface MarkdownRendererProps {
 }
 
 export function MarkdownRenderer({ content, onLinkClick }: MarkdownRendererProps) {
+  // 解析 Obsidian frontmatter
+  const { frontmatter, body } = useMemo(() => parseFrontmatter(content), [content]);
+
   // 预处理：Obsidian 扩展语法
-  const processed = preprocessObsidian(content);
+  const processed = preprocessObsidian(body);
 
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none
+    <div>
+      {/* Frontmatter 属性卡片 */}
+      <FrontmatterCard frontmatter={frontmatter} />
+
+      <div className="prose prose-sm dark:prose-invert max-w-none
                     prose-headings:scroll-mt-20
                     prose-h1:text-2xl prose-h1:font-bold prose-h1:mb-4
                     prose-h2:text-xl prose-h2:font-semibold prose-h2:mt-8 prose-h2:mb-3
@@ -107,6 +114,7 @@ export function MarkdownRenderer({ content, onLinkClick }: MarkdownRendererProps
       >
         {processed}
       </ReactMarkdown>
+    </div>
     </div>
   );
 }
@@ -223,6 +231,185 @@ function Callout({ type, children }: CalloutProps) {
         <span>{config.title}</span>
       </div>
       <div className="text-sm opacity-90">{children}</div>
+    </div>
+  );
+}
+
+// ============================================================
+// Obsidian 风格 Frontmatter 解析 + 渲染
+// ============================================================
+
+interface Frontmatter {
+  title?: string;
+  category?: string;
+  tags?: string[];
+  type?: string;
+  created?: string;
+  updated?: string;
+  status?: string;
+  related?: string[];
+  [key: string]: unknown;
+}
+
+/** 解析 YAML frontmatter（轻量实现，不依赖外部库） */
+function parseFrontmatter(content: string): { frontmatter: Frontmatter; body: string } {
+  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  if (!match) return { frontmatter: {}, body: content };
+
+  const yaml = match[1];
+  const body = match[2] || '';
+  const fm: Frontmatter = {};
+
+  // 简易 YAML 解析
+  const lines = yaml.split('\n');
+  let currentKey = '';
+  let inArray = false;
+  let inRelated = false;
+
+  for (const line of lines) {
+    // 跳过空行
+    if (!line.trim()) continue;
+
+    // 数组中的行
+    if (inArray) {
+      if (line.trim().startsWith('- ')) {
+        const val = line.trim().slice(2).trim();
+        const arr = (fm[currentKey] as string[]) || [];
+        arr.push(val);
+        fm[currentKey] = arr;
+        continue;
+      } else {
+        inArray = false;
+      }
+    }
+
+    // 嵌套对象（related 字段）
+    if (inRelated) {
+      if (line.trim().startsWith('- ')) {
+        const val = line.trim().slice(2).replace(/^"|"$/g, '');
+        const arr = fm[currentKey] as string[] || [];
+        arr.push(val);
+        fm[currentKey] = arr;
+        continue;
+      } else {
+        inRelated = false;
+      }
+    }
+
+    const kv = line.match(/^(\w[\w-]*):\s*(.*)$/);
+    if (kv) {
+      currentKey = kv[1];
+      const val = kv[2].trim();
+
+      // 嵌套对象标记
+      if (val === '' && currentKey === 'related') {
+        inRelated = true;
+        fm[currentKey] = [];
+        continue;
+      }
+
+      // 数组
+      if (val.startsWith('[') && val.endsWith(']')) {
+        fm[currentKey] = val.slice(1, -1).split(',').map(s =>
+          s.trim().replace(/^"|"$/g, '')
+        );
+        inArray = false;
+        continue;
+      }
+
+      // 空值 → 可能下面有数组
+      if (val === '') {
+        inArray = true;
+        continue;
+      }
+
+      // 普通值
+      fm[currentKey] = val.replace(/^"|"$/g, '');
+      inArray = false;
+    }
+  }
+
+  return { frontmatter: fm, body };
+}
+
+/** Obsidian 风格属性卡片 */
+function FrontmatterCard({ frontmatter }: { frontmatter: Frontmatter }) {
+  const hasContent = Object.keys(frontmatter).filter(k => frontmatter[k as keyof Frontmatter] != null && frontmatter[k as keyof Frontmatter] !== '').length > 0;
+  if (!hasContent) return null;
+
+  const { title, category, tags, type, created, updated, status } = frontmatter;
+
+  return (
+    <div className="mb-6 rounded-xl border border-border bg-card overflow-hidden">
+      {/* 标题行 */}
+      {title && (
+        <div className="px-5 py-3 border-b border-border/50">
+          <h1 className="text-lg font-bold text-foreground m-0">{title}</h1>
+        </div>
+      )}
+
+      {/* 属性列表 */}
+      <div className="px-5 py-3 grid grid-cols-2 gap-x-6 gap-y-2.5">
+        {category && (
+          <div className="flex items-center gap-2">
+            <Folder size={13} className="text-primary/60 shrink-0" />
+            <span className="text-[11px] text-muted-foreground min-w-[48px]">分类</span>
+            <span className="text-xs text-foreground font-medium truncate">{category}</span>
+          </div>
+        )}
+
+        {type && (
+          <div className="flex items-center gap-2">
+            <FileText size={13} className="text-primary/60 shrink-0" />
+            <span className="text-[11px] text-muted-foreground min-w-[48px]">类型</span>
+            <span className="text-xs text-foreground font-medium">{type}</span>
+          </div>
+        )}
+
+        {status && (
+          <div className="flex items-center gap-2">
+            <Hash size={13} className="text-primary/60 shrink-0" />
+            <span className="text-[11px] text-muted-foreground min-w-[48px]">状态</span>
+            <span className={cn(
+              'text-xs font-medium px-1.5 py-0.5 rounded',
+              status === 'active' ? 'bg-emerald-500/10 text-emerald-600' :
+              status === 'draft' ? 'bg-amber-500/10 text-amber-600' :
+              'bg-muted text-muted-foreground'
+            )}>{status}</span>
+          </div>
+        )}
+
+        {created && (
+          <div className="flex items-center gap-2">
+            <Calendar size={13} className="text-primary/60 shrink-0" />
+            <span className="text-[11px] text-muted-foreground min-w-[48px]">创建</span>
+            <span className="text-xs text-foreground">{created}</span>
+          </div>
+        )}
+
+        {updated && updated !== created && (
+          <div className="flex items-center gap-2">
+            <ArrowUpRight size={13} className="text-primary/60 shrink-0" />
+            <span className="text-[11px] text-muted-foreground min-w-[48px]">更新</span>
+            <span className="text-xs text-foreground">{updated}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Tags */}
+      {tags && tags.length > 0 && (
+        <div className="px-5 py-2.5 border-t border-border/50 flex items-center gap-2 flex-wrap">
+          <Tag size={12} className="text-primary/50 shrink-0" />
+          {tags.map(tag => (
+            <span
+              key={tag}
+              className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
