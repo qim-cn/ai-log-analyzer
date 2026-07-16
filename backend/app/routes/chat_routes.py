@@ -16,6 +16,7 @@ SSE 事件格式：
 import asyncio as _asyncio
 import json
 import logging
+import re
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
@@ -60,8 +61,28 @@ async def send_message(body: SendMessageRequest, request: Request):
         from app.services.session_service import session_service as _ss
         sess = _ss.get_session(body.session_id)
         if sess and sess.title in ("新对话", ""):
-            # 取消息前 30 字符作为标题
-            title = body.content.strip().replace("\n", " ")[:30]
+            # 提取故障标题：本地分析命中时用故障类型，否则取消息关键词
+            title = ""
+            if local_result:
+                # 从本地分析结果中提取故障类型
+                fault_match = re.search(r'### \d+\. (.+)', local_result)
+                if fault_match:
+                    title = fault_match.group(1)
+            if not title:
+                # fallback：取日志/消息中的关键故障词
+                combined = f"{body.content} {log_snippet}"
+                key_patterns = [
+                    r'PCIe链路降宽', r'PCIe链路降速', r'HBA.*超时', r'SAS链路错误',
+                    r'内存故障', r'CPU过热', r'SMART异常', r'网卡.*故障',
+                    r'电源.*故障', r'风扇故障',
+                ]
+                for p in key_patterns:
+                    m = re.search(p, combined, re.IGNORECASE)
+                    if m:
+                        title = m.group(0)
+                        break
+            if not title:
+                title = body.content.strip().replace("\n", " ")[:20]
             if title:
                 _ss.update_title(body.session_id, title)
     except Exception:

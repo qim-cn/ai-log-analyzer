@@ -20,8 +20,10 @@ TEST_FAILURE_PATTERNS: list[tuple[str, str, str]] = [
     # PCIe 链路宽度相关
     (r"(?i)pci.*x(\d+).*vs.*x(\d+).*fail", "PCIe链路降宽",
      "部件({bdf})协商x{actual}，预期x{expected}。{bay_info}"
-     "排查顺序：1. 重插拔该槽位部件/托架 2. 目检连接器/金手指 "
-     "3. 交叉验证（换到正常槽位测试） 4. 换件"),
+     "**验证命令：** `lspci -vvv -s {bdf}` 查看 LnkSta 协商宽度，"
+     "`setpci -s {bdf} CAP_EXP+12.L` 读链路状态寄存器。"
+     "排查：1. 重插拔该槽位 → 2. 目检金手指/连接器 "
+     "→ 3. 交叉验证换到正常槽位 → 4. 换件"),
 
     # PCIe 链路速率相关
     (r"(?i)pci.*(\d+)gt/s.*vs.*(\d+)gt/s.*fail", "PCIe链路降速",
@@ -153,16 +155,25 @@ def try_local_analysis(query: str, log_snippet: str = "") -> tuple[str | None, s
         lines.append(f"### {i+1}. {m['type']}")
         lines.append(sug)
 
-        # 搜索知识库
+        # 搜索知识库：用故障类型中的每个独立词分别搜
         try:
+            # 从故障类型中提取搜索词（英文/中文各一个）
+            words = re.findall(r'[a-zA-Z0-9]+|[一-鿿]{1,3}', m["type"])
+            keywords = list(dict.fromkeys(words))[:3]  # 去重取前3个
             conn = get_connection()
-            kb = conn.execute(
-                "SELECT command, description FROM linux_knowledge WHERE tags LIKE ? OR title LIKE ? LIMIT 3",
-                (f"%{m['type'].lower()}%", f"%{m['type']}%"),
-            ).fetchall()
+            kb = []
+            for kw in keywords:
+                rows = conn.execute(
+                    "SELECT command, description FROM linux_knowledge "
+                    "WHERE tags LIKE ? OR title LIKE ? OR solution LIKE ? LIMIT 2",
+                    (f"%{kw}%", f"%{kw}%", f"%{kw}%"),
+                ).fetchall()
+                for row in rows:
+                    if len(kb) < 3:
+                        kb.append(row)
             if kb:
                 lines.append("")
-                lines.append("**相关诊断命令：**")
+                lines.append("**诊断命令：**")
                 for row in kb[:3]:
                     lines.append(f"- `{row['command']}` — {row['description']}")
         except Exception:
