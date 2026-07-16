@@ -22,6 +22,7 @@ class ObsidianSettingsResponse(BaseModel):
     webdav_configured: bool
     vault_path: str
     browse_paths: list[str] = []
+    resolved_path: str = ""
     auto_save: bool
 
 
@@ -32,4 +33,5 @@ class UpdateObsidianSettingsRequest(BaseModel):
     webdav_pass: str | None = None
     vault_path: str | None = None
     browse_paths: list[str] | None = None
+    resolved_path: str | None = None
     auto_save: bool | None = None

@@ -65,6 +65,7 @@ export const obsidianService = {
     webdav_pass?: string;
     vault_path?: string;
     browse_paths?: string[];
+    resolved_path?: string;
     auto_save?: boolean;
   }) => http.put<ObsidianSettings>('/obsidian/settings', data),
 };

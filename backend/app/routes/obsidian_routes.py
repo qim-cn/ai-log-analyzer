@@ -162,6 +162,7 @@ async def get_settings(request: Request):
             webdav_configured=bool(settings["webdav_url"]),
             vault_path=settings["vault_path"],
             browse_paths=settings.get("browse_paths", []),
+            resolved_path=settings.get("resolved_path", ""),
             auto_save=settings["auto_save"],
         ),
     }
@@ -187,6 +188,8 @@ async def update_settings(body: UpdateObsidianSettingsRequest, request: Request)
         update_data["auto_save"] = "true" if body.auto_save else "false"
     if body.browse_paths is not None:
         update_data["browse_paths"] = body.browse_paths
+    if body.resolved_path is not None:
+        update_data["resolved_path"] = body.resolved_path
 
     obsidian_service.update_settings(update_data)
 
@@ -201,6 +204,7 @@ async def update_settings(body: UpdateObsidianSettingsRequest, request: Request)
             webdav_configured=bool(settings["webdav_url"]),
             vault_path=settings["vault_path"],
             browse_paths=settings.get("browse_paths", []),
+            resolved_path=settings.get("resolved_path", ""),
             auto_save=settings["auto_save"],
         ),
     }
@@ -212,18 +216,25 @@ async def update_settings(body: UpdateObsidianSettingsRequest, request: Request)
 
 from pathlib import Path
 
-RESOLVED_DIR = Path("/resolved")
+BASE_RESOLVED = Path("/resolved")
+
+
+def _resolved_dir() -> Path:
+    config = obsidian_service.get_settings()
+    rp = (config.get("resolved_path") or "").strip().strip("/")
+    return BASE_RESOLVED / rp if rp else BASE_RESOLVED
 
 
 @router.get("/resolved/list", response_model=dict)
 async def list_resolved():
-    """列出已解决的故障记录（支持机型子目录）"""
+    """列出已解决的故障记录（支持子目录）"""
+    rd = _resolved_dir()
     files = []
-    if RESOLVED_DIR.exists():
-        for md in sorted(RESOLVED_DIR.rglob("*.md"), key=lambda p: p.name, reverse=True):
+    if rd.exists():
+        for md in sorted(rd.rglob("*.md"), key=lambda p: p.name, reverse=True):
             if md.name == "index.md" or ".obsidian" in md.parts or ".trash" in md.parts:
                 continue
-            rel = md.relative_to(RESOLVED_DIR)
+            rel = md.relative_to(rd)
             stat = md.stat()
             model = str(rel.parent) if str(rel.parent) != "." else ""
             files.append({
@@ -238,9 +249,10 @@ async def list_resolved():
 
 @router.get("/resolved/file", response_model=dict)
 async def get_resolved_file(filename: str):
-    """读取已解决记录的内容（路径相对于 /resolved/）"""
-    file_path = (RESOLVED_DIR / filename).resolve()
-    if not str(file_path).startswith(str(RESOLVED_DIR.resolve())) or not file_path.exists():
+    """读取已解决记录的内容"""
+    rd = _resolved_dir()
+    file_path = (rd / filename).resolve()
+    if not str(file_path).startswith(str(rd.resolve())) or not file_path.exists():
         return {"code": 404, "message": "文件不存在", "data": None}
     content = file_path.read_text(encoding="utf-8")
     return {"code": 0, "message": "success", "data": {"filename": filename, "content": content}}

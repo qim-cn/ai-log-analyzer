@@ -4,5 +4,6 @@ export interface ObsidianSettings {
   webdav_configured: boolean;
   vault_path: string;
   browse_paths: string[];
+  resolved_path: string;
   auto_save: boolean;
 }

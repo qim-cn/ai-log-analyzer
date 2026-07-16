@@ -30,10 +30,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [webdavUser, setWebdavUser] = useState('');
   const [webdavPass, setWebdavPass] = useState('');
   const [browsePaths, setBrowsePaths] = useState<string[]>([]);
+  const [resolvedPath, setResolvedPath] = useState('');
   const [savingObsidian, setSavingObsidian] = useState(false);
 
-  // 目录浏览器（Obsidian浏览目录用，支持多选）
+  // 目录浏览器
   const [showBrowser, setShowBrowser] = useState(false);
+  const [browserTarget, setBrowserTarget] = useState<'browse' | 'resolved'>('browse');
   const [tree, setTree] = useState<FileTreeNode[]>([]);
   const [treeLoading, setTreeLoading] = useState(false);
   const [treeError, setTreeError] = useState('');
@@ -69,6 +71,18 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (!browsePaths.includes(p)) setBrowsePaths([...browsePaths, p]);
   };
 
+  const selectResolvedPath = () => {
+    const p = currentPath.length > 0 ? currentPath.join('/') : '';
+    setResolvedPath(p);
+    setShowBrowser(false);
+    setCurrentPath([]);
+  };
+
+  const selectCurrentAction = () => {
+    if (browserTarget === 'resolved') selectResolvedPath();
+    else addBrowsePath();
+  };
+
   const removeBrowsePath = (p: string) => setBrowsePaths(browsePaths.filter(x => x !== p));
 
   const breadcrumb = ['Vault', ...currentPath];
@@ -88,13 +102,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       setWebdavUrl(s.webdav_url);
       setWebdavUser(s.webdav_user);
       setBrowsePaths(s.browse_paths || []);
+      setResolvedPath(s.resolved_path || '');
     } catch (err) { console.error(err); }
   };
 
   const handleSaveObsidian = async () => {
     setSavingObsidian(true);
     try {
-      await obsidianService.updateSettings({ webdav_url: webdavUrl, webdav_user: webdavUser, webdav_pass: webdavPass || undefined, browse_paths: browsePaths });
+      await obsidianService.updateSettings({ webdav_url: webdavUrl, webdav_user: webdavUser, webdav_pass: webdavPass || undefined, browse_paths: browsePaths, resolved_path: resolvedPath });
       await fetchObsidianSettings();
       alert('知识库配置已保存');
     } catch (err: any) { alert(`保存失败: ${err.message}`); }
@@ -167,7 +182,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <div className="border border-border rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-medium text-muted-foreground">Obsidian 浏览目录</div>
-                  <button onClick={() => setShowBrowser(!showBrowser)} className={cn("p-1.5 rounded-lg border border-border hover:bg-muted flex items-center gap-1 text-[11px]", showBrowser && "bg-primary/10 border-primary/30")}>
+                  <button onClick={() => { setBrowserTarget('browse'); setShowBrowser(!showBrowser); }} className={cn("p-1.5 rounded-lg border border-border hover:bg-muted flex items-center gap-1 text-[11px]", showBrowser && browserTarget==='browse' && "bg-primary/10 border-primary/30")}>
                     <Globe size={13} /> {showBrowser ? '收起' : '浏览选择'}
                   </button>
                 </div>
@@ -231,12 +246,28 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
                     <div className="border-t border-border px-3 py-2 flex justify-between items-center bg-muted/30">
                       <span className="text-[10px] text-muted-foreground">当前: {currentPath.length > 0 ? currentPath.join(' / ') : '(根目录)'}</span>
-                      <button onClick={addBrowsePath} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary text-primary-foreground text-[11px] font-medium hover:opacity-90">
-                        <Plus size={11} /> 添加此目录
+                      <button onClick={selectCurrentAction} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary text-primary-foreground text-[11px] font-medium hover:opacity-90">
+                        <Plus size={11} /> {browserTarget === 'resolved' ? '设为已解决目录' : '添加此目录'}
                       </button>
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* 已解决保存目录 */}
+              <div className="border border-border rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-medium text-muted-foreground">已解决保存目录</div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-muted-foreground/60 shrink-0">已解决/</span>
+                  <input type="text" value={resolvedPath} onChange={e => setResolvedPath(e.target.value)}
+                    placeholder="留空=根目录" className="flex-1 px-2.5 py-1.5 rounded-lg border border-input bg-background text-xs" />
+                  <button onClick={() => { setBrowserTarget('resolved'); setShowBrowser(!showBrowser); }}
+                    className={cn("p-1.5 rounded-lg border border-border hover:bg-muted shrink-0", showBrowser && browserTarget==='resolved' && "bg-primary/10 border-primary/30")}>
+                    <Globe size={13} />
+                  </button>
+                </div>
               </div>
 
               {/* 保存 */}

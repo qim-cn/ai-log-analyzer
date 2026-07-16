@@ -48,6 +48,7 @@ def _get_settings() -> dict:
         "webdav_pass": config.get("obsidian_webdav_pass", DEFAULT_WEBDAV_PASS),
         "vault_path": config.get("obsidian_vault_path", DEFAULT_VAULT_PATH),
         "browse_paths": json.loads(config.get("obsidian_browse_paths", "[]")),
+        "resolved_path": config.get("obsidian_resolved_path", ""),
         "auto_save": config.get("obsidian_auto_save", "false") == "true",
     }
 
@@ -536,10 +537,12 @@ class ObsidianService:
         self, title: str, save_path: str, log_summary: str, log_snippet: str,
         analysis: str, user: str = "admin",
     ) -> dict:
-        """已解决 → /resolved/{用户指定子目录}/{标题}.md"""
-        # 用户手动指定的子路径，空 = 根目录
+        """已解决 → /resolved/{resolved_path}/{save_path}/{标题}.md"""
+        config = _get_settings()
+        resolved_base = config.get("resolved_path", "").strip().strip("/")
+        base = Path("/resolved") / resolved_base if resolved_base else Path("/resolved")
         clean_path = save_path.strip().strip("/")
-        target_dir = Path("/resolved") / _sanitize_filename(clean_path) if clean_path else Path("/resolved")
+        target_dir = base / _sanitize_filename(clean_path) if clean_path else base
         target_dir.mkdir(parents=True, exist_ok=True)
 
         date_str = datetime.utcnow().strftime("%Y-%m-%d")
@@ -552,7 +555,7 @@ class ObsidianService:
         )
 
         file_path = target_dir / filename
-        rel = str(file_path.relative_to(Path("/resolved")))
+        rel = str(file_path.relative_to(base))
         try:
             file_path.write_text(content, encoding="utf-8")
             logger.info(f"Resolved note saved: {file_path}")
