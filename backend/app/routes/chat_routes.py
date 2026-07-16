@@ -13,6 +13,7 @@ SSE 事件格式：
 - data: {"done": true}
 """
 
+import asyncio as _asyncio
 import json
 import logging
 
@@ -23,6 +24,7 @@ from app.middlewares.error_handler import ValidationError
 from app.models.message import MessageRole
 from app.services.ai_service import ai_service
 from app.services.context_manager import get_context_manager
+from app.services.local_analysis_service import try_local_analysis, feed_known_pattern
 from app.services.log_service import log_service
 from app.services.message_service import message_service
 from app.types.message_types import SendMessageRequest
@@ -58,7 +60,24 @@ async def send_message(body: SendMessageRequest, request: Request):
     # 2. 获取日志摘要
     log_summary = log_service.get_logs_summary_for_session(body.session_id)
 
-    # 3. 智能知识反哺：搜索知识库注入历史案例
+    # 提取原始日志内容（用于本地模式匹配）
+    log_snippet = ""
+    try:
+        from app.repositories.log_repository import log_repository
+        logs = log_repository.get_by_session(body.session_id)
+        if logs:
+            log_snippet = "\n".join(l.content[:500] for l in logs[:3] if l.content)
+    except Exception:
+        pass
+
+    # 3. 本地分析优先（不消耗 AI token）
+    source_tag = "AI 分析"
+    local_result, local_source = try_local_analysis(body.content, log_snippet)
+    if local_result:
+        source_tag = local_source
+        logger.info(f"本地分析命中，跳过 AI 调用")
+
+    # 4. 智能知识反哺：搜索知识库注入历史案例
     knowledge_context = ""
     try:
         from app.services.knowledge_feedback import knowledge_feedback
@@ -70,25 +89,59 @@ async def send_message(body: SendMessageRequest, request: Request):
         logger.debug(f"知识反哺跳过: {e}")
 
     # 合并日志摘要和知识反哺
-    full_context = log_summary
+    full_context = log_summary or ""
     if knowledge_context:
         full_context = (full_context + "\n\n" + knowledge_context).strip()
 
-    # 4. 获取历史消息
+    # 5. 获取历史消息
     recent = message_service.get_recent_messages(body.session_id, limit=31)
     history = recent[:-1]
 
-    # 5. 组装上下文
+    # 6. 组装上下文
     context_manager = get_context_manager()
 
-    # 6. 流式返回
+    # 7. 流式返回
     async def generate():
         full_response = ""
         try:
-            # 思考阶段 1：正在分析日志
+            # ── 本地分析命中 → 直接流式返回 ──
+            if local_result:
+                source_display = "🖥️ 本地分析引擎" if source_tag == "本地分析" else "🤖 AI 分析"
+                yield _sse_event({
+                    "status": "thinking",
+                    "message": f"正在分析日志... [{source_display}]",
+                })
+
+                # 模拟打字机输出本地结果
+                for char in local_result:
+                    full_response += char
+                    yield _sse_event({"content": char})
+                    # 适当的流式延迟
+                    if char in "\n":
+                        await _asyncio.sleep(0.005)
+                    else:
+                        await _asyncio.sleep(0.0005)
+
+                # 保存回复
+                message_service.create_message(
+                    session_id=body.session_id,
+                    role=MessageRole.ASSISTANT,
+                    content=full_response,
+                )
+
+                # 如果本地分析里提到了诊断命令，也注入知识库
+                try:
+                    feed_known_pattern(log_snippet)
+                except Exception:
+                    pass
+
+                yield _sse_event({"done": True, "source": source_tag})
+                return
+
+            # ── 本地未命中 → 调用 AI ──
             yield _sse_event({
                 "status": "thinking",
-                "message": "正在分析日志内容..."
+                "message": "本地无匹配，正在调用 AI 分析..."
             })
 
             messages = await context_manager.build_messages(
@@ -97,30 +150,37 @@ async def send_message(body: SendMessageRequest, request: Request):
                 current_query=body.content,
             )
 
-            # 思考阶段 2：正在生成回复
             yield _sse_event({
                 "status": "thinking",
-                "message": "正在生成分析结果..."
+                "message": "🤖 AI 正在生成分析结果..."
             })
 
-            # 开始流式输出
+            # 开头标注 AI 分析
+            ai_tag = "\n> 🤖 以下为 AI 分析结果\n\n"
+            full_response += ai_tag
+            yield _sse_event({"content": ai_tag})
+
             async for chunk in ai_service.chat_stream(messages):
                 full_response += chunk
                 yield _sse_event({"content": chunk})
 
-            # 6. 保存 AI 回复
+            # 保存 AI 回复，并提取错误模式供下次本地分析
             if full_response:
                 message_service.create_message(
                     session_id=body.session_id,
                     role=MessageRole.ASSISTANT,
                     content=full_response,
                 )
+                try:
+                    feed_known_pattern(log_snippet)
+                except Exception:
+                    pass
 
-            yield _sse_event({"done": True})
+            yield _sse_event({"done": True, "source": "AI 分析"})
 
         except Exception as e:
             logger.exception(f"流式响应异常: {e}")
-            error_msg = f"AI 响应异常: {str(e)}"
+            error_msg = f"分析异常: {str(e)}"
             message_service.create_message(
                 session_id=body.session_id,
                 role=MessageRole.ASSISTANT,
