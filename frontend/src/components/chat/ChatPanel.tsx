@@ -32,6 +32,14 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
   } = useChatStore();
 
   const { logFiles, fetchLogs, uploadLog, uploading } = useLogStore();
+
+  // 提取日志摘要供保存知识库使用
+  const logSnippet = logFiles.length > 0
+    ? logFiles.map(f => f.content || f.summary || '').filter(Boolean).join('\n').slice(0, 4000)
+    : '';
+  const logSummary = logFiles.length > 0
+    ? logFiles.map(f => f.filename).join(', ')
+    : '';
   const sessions = useSessionStore((s) => s.sessions);
   const currentSession = sessions.find((s) => s.id === sessionId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -148,7 +156,7 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
         ) : (
           <div className="py-4">
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} />
+              <MessageBubble key={msg.id} message={msg} logSnippet={logSnippet} logSummary={logSummary} />
             ))}
 
             {thinking && !streamingContent && (

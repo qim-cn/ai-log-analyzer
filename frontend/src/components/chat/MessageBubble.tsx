@@ -16,9 +16,11 @@ import { SaveToKnowledgeButton } from './SaveToKnowledgeButton';
 interface MessageBubbleProps {
   message: Message;
   isStreaming?: boolean;
+  logSnippet?: string;
+  logSummary?: string;
 }
 
-export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
+export function MessageBubble({ message, isStreaming, logSnippet, logSummary }: MessageBubbleProps) {
   const isUser = message.role === 'user';
 
   return (
@@ -80,6 +82,8 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
             <SaveToKnowledgeButton
               analysis={message.content}
               sessionId={message.session_id}
+              logSnippet={logSnippet}
+              logSummary={logSummary}
             />
           )}
         </div>
