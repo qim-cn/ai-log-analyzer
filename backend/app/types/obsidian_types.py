@@ -30,4 +30,5 @@ class UpdateObsidianSettingsRequest(BaseModel):
     webdav_user: str | None = None
     webdav_pass: str | None = None
     vault_path: str | None = None
+    browse_paths: list[str] | None = None
     auto_save: bool | None = None

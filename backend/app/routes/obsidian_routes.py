@@ -184,6 +184,8 @@ async def update_settings(body: UpdateObsidianSettingsRequest, request: Request)
         update_data["vault_path"] = body.vault_path
     if body.auto_save is not None:
         update_data["auto_save"] = "true" if body.auto_save else "false"
+    if body.browse_paths is not None:
+        update_data["browse_paths"] = body.browse_paths
 
     obsidian_service.update_settings(update_data)
 
