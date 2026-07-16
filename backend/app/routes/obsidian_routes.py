@@ -142,9 +142,16 @@ async def search_notes(q: str = ""):
     }
 
 
+@router.get("/browse-paths", response_model=dict)
+async def get_browse_paths():
+    """获取浏览目录配置（公开，无敏感信息）"""
+    config = obsidian_service.get_settings()
+    return {"code": 0, "message": "success", "data": {"browse_paths": config.get("browse_paths", [])}}
+
+
 @router.get("/settings", response_model=dict)
 async def get_settings(request: Request):
-    """获取知识库配置"""
+    """获取知识库配置（需登录）"""
     settings = obsidian_service.get_settings()
     return {
         "code": 0,

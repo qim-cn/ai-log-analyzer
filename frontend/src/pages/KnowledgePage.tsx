@@ -47,8 +47,9 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
     setLoading(true);
     try {
       // 只加载设置中选中的浏览目录
-      const settings = await obsidianService.getSettings();
-      const paths = settings.browse_paths || [];
+      const r = await fetch('/api/obsidian/browse-paths');
+      const d = await r.json();
+      const paths: string[] = d.data?.browse_paths || [];
       if (paths.length > 0) {
         const trees = await Promise.all(paths.map(p => obsidianService.getFileTree(p)));
         const combined: FileTreeNode[] = [];
