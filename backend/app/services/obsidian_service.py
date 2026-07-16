@@ -27,6 +27,7 @@ DEFAULT_WEBDAV_URL = os.getenv("OBSIDIAN_WEBDAV_URL", "")
 DEFAULT_WEBDAV_USER = os.getenv("OBSIDIAN_WEBDAV_USER", "")
 DEFAULT_WEBDAV_PASS = os.getenv("OBSIDIAN_WEBDAV_PASS", "")
 DEFAULT_VAULT_PATH = os.getenv("OBSIDIAN_VAULT_PATH", "/服务器维修笔记/AI分析记录/")
+DEFAULT_RESOLVED_PATH = os.getenv("OBSIDIAN_RESOLVED_PATH", "/服务器维修笔记/已解决/")
 
 # 本地文件系统配置
 LOCAL_VAULT_PATH = os.getenv("OBSIDIAN_LOCAL_PATH", "/vault")
@@ -262,12 +263,22 @@ class ObsidianService:
         config = _get_settings()
         return bool(config["webdav_url"])
 
-    def _get_local_vault_dir(self) -> Path:
+    def _get_local_vault_dir(self, resolved: bool = False) -> Path:
         """获取本地仓库目录"""
         config = _get_settings()
-        vault_path = config.get("vault_path", DEFAULT_VAULT_PATH).strip("/")
+        if resolved:
+            vault_path = DEFAULT_RESOLVED_PATH.strip("/")
+        else:
+            vault_path = config.get("vault_path", DEFAULT_VAULT_PATH).strip("/")
         local_base = Path(LOCAL_VAULT_PATH)
         return local_base / vault_path
+
+    def _get_target_path(self, resolved: bool = False) -> str:
+        """获取 WebDAV 保存目标路径"""
+        config = _get_settings()
+        if resolved:
+            return DEFAULT_RESOLVED_PATH.strip("/")
+        return config.get("vault_path", DEFAULT_VAULT_PATH).strip("/")
 
     # ============================================================
     # 本地文件系统操作
@@ -395,9 +406,10 @@ class ObsidianService:
         log_snippet: str,
         analysis: str,
         user: str = "admin",
+        resolved: bool = False,
     ) -> dict:
         """保存笔记到本地文件系统"""
-        vault_dir = self._get_local_vault_dir()
+        vault_dir = self._get_local_vault_dir(resolved)
         vault_dir.mkdir(parents=True, exist_ok=True)
 
         date_str = datetime.utcnow().strftime("%Y-%m-%d")
@@ -488,12 +500,13 @@ class ObsidianService:
         log_snippet: str,
         analysis: str,
         user: str = "admin",
+        resolved: bool = False,
     ) -> dict:
-        """保存笔记到 Obsidian 知识库"""
+        """保存笔记到 Obsidian 知识库。resolved=True → 已解决/ 目录"""
         if self._is_webdav_configured():
-            return await self._save_note_webdav(title, log_summary, log_snippet, analysis, user)
+            return await self._save_note_webdav(title, log_summary, log_snippet, analysis, user, resolved)
         else:
-            return self._local_save_note(title, log_summary, log_snippet, analysis, user)
+            return self._local_save_note(title, log_summary, log_snippet, analysis, user, resolved)
 
     async def _save_note_webdav(
         self,
@@ -502,6 +515,7 @@ class ObsidianService:
         log_snippet: str,
         analysis: str,
         user: str = "admin",
+        resolved: bool = False,
     ) -> dict:
         """通过 WebDAV 保存笔记"""
         config = _get_settings()
@@ -511,7 +525,7 @@ class ObsidianService:
 
         auth = _webdav_auth(config["webdav_user"], config["webdav_pass"])
         base_url = config["webdav_url"].rstrip("/")
-        vault_path = config["vault_path"].strip("/")
+        vault_path = self._get_target_path(resolved)
 
         await _webdav_mkdir(base_url, auth, vault_path)
 

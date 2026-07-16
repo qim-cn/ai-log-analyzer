@@ -50,6 +50,7 @@ async def save_note(body: SaveNoteRequest, request: Request):
         log_snippet=body.log_snippet or "",
         analysis=body.analysis,
         user=user.username,
+        resolved=body.resolved,
     )
 
     if result["success"]:

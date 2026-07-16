@@ -26,12 +26,13 @@ export interface SearchResult {
 }
 
 export const obsidianService = {
-  /** 保存分析结果到知识库 */
+  /** 保存分析结果到知识库。resolved=true → 已解决/ */
   save: (data: {
     title: string;
     log_summary?: string;
     log_snippet?: string;
     analysis: string;
+    resolved?: boolean;
   }) => http.post<{ success: boolean; filename: string; message: string }>('/obsidian/save', data),
 
   /** 获取笔记列表 */

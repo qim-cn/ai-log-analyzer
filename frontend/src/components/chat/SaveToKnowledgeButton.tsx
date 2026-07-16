@@ -24,6 +24,7 @@ export function SaveToKnowledgeButton({
   const [saved, setSaved] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [title, setTitle] = useState('');
+  const [resolved, setResolved] = useState(false);
   const [error, setError] = useState('');
 
   const handleSave = async () => {
@@ -40,6 +41,7 @@ export function SaveToKnowledgeButton({
         log_summary: logSummary || '',
         log_snippet: logSnippet || '',
         analysis,
+        resolved,
       });
       setSaved(true);
       setShowDialog(false);
@@ -113,6 +115,25 @@ export function SaveToKnowledgeButton({
               <div className="text-[11px] text-muted-foreground/60">
                 将自动提取日志摘要和 AI 分析结果，按模板格式保存
               </div>
+
+              {/* 已解决开关 */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <div
+                  onClick={() => setResolved(!resolved)}
+                  className={`relative w-9 h-5 rounded-full transition-colors ${
+                    resolved ? 'bg-emerald-500' : 'bg-muted-foreground/30'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                      resolved ? 'translate-x-[18px]' : 'translate-x-0.5'
+                    }`}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {resolved ? '保存到 📁 已解决/' : '保存到 📁 AI分析记录/'}
+                </span>
+              </label>
 
               {error && (
                 <div className="text-xs text-destructive">{error}</div>

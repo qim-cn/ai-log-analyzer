@@ -11,6 +11,7 @@ class SaveNoteRequest(BaseModel):
     log_summary: str = ""
     log_snippet: str = ""
     analysis: str
+    resolved: bool = False  # True→已解决/ False→AI分析记录/
 
 
 class ObsidianSettingsResponse(BaseModel):
