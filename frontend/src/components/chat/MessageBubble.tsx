@@ -79,6 +79,7 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
           {!isUser && !isStreaming && (
             <SaveToKnowledgeButton
               analysis={message.content}
+              sessionId={message.session_id}
             />
           )}
         </div>

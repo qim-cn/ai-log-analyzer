@@ -14,6 +14,7 @@ interface SaveToKnowledgeButtonProps {
   logSummary?: string;
   logSnippet?: string;
   analysis: string;
+  sessionId?: string;
 }
 
 export function SaveToKnowledgeButton({
@@ -21,6 +22,7 @@ export function SaveToKnowledgeButton({
   logSummary,
   logSnippet,
   analysis,
+  sessionId,
 }: SaveToKnowledgeButtonProps) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -39,6 +41,7 @@ export function SaveToKnowledgeButton({
         log_snippet: logSnippet || '',
         analysis,
         repair_notes: repairNotes.trim(),
+        session_id: sessionId || '',
         resolved: true,
       });
       setSaved(true);

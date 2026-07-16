@@ -84,7 +84,7 @@ async def send_message(body: SendMessageRequest, request: Request):
             if not title:
                 title = body.content.strip().replace("\n", " ")[:20]
             if title:
-                _ss.update_title(body.session_id, title)
+                _ss.update_title(body.session_id, f"确认中 - {title}")
     except Exception:
         pass
 

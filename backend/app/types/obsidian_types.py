@@ -12,6 +12,7 @@ class SaveNoteRequest(BaseModel):
     log_snippet: str = ""
     analysis: str
     repair_notes: str = ""      # 用户填写的实际维修操作过程
+    session_id: str = ""        # 关联的会话ID，保存时自动标记已解决
     resolved: bool = False
 
 

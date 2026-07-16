@@ -57,6 +57,13 @@ async def save_note(body: SaveNoteRequest, request: Request):
     )
 
     if result["success"]:
+        # 保存成功 → 标记会话为已解决
+        if body.session_id:
+            try:
+                from app.services.session_service import session_service as _ss2
+                _ss2.update_title(body.session_id, f"已解决 - {body.title}")
+            except Exception:
+                pass
         return {"code": 0, "message": result["message"], "data": result}
     else:
         raise ValidationError(result["message"])

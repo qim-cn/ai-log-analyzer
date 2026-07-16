@@ -1,6 +1,6 @@
 /**
  * 大纲导航组件
- * 自动提取 ## ### 标题生成目录，点击跳转
+ * 提取 ## ### 标题生成目录，点击跳转到对应标题元素
  */
 
 import { useMemo } from 'react';
@@ -9,16 +9,15 @@ import { cn } from '@/utils';
 
 interface OutlinePanelProps {
   content: string;
-  onClick: (lineNumber: number) => void;
+  onClick?: (lineNumber: number) => void;
 }
 
 interface HeadingItem {
   level: number;
   text: string;
-  line: number;
 }
 
-export function OutlinePanel({ content, onClick }: OutlinePanelProps) {
+export function OutlinePanel({ content }: OutlinePanelProps) {
   const headings = useMemo(() => extractHeadings(content), [content]);
 
   if (headings.length === 0) {
@@ -28,6 +27,12 @@ export function OutlinePanel({ content, onClick }: OutlinePanelProps) {
       </div>
     );
   }
+
+  const scrollTo = (text: string) => {
+    const id = `heading-${text.slice(0, 40).replace(/[^a-zA-Z0-9一-鿿]/g, '-')}`;
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
     <div className="py-3">
@@ -39,13 +44,13 @@ export function OutlinePanel({ content, onClick }: OutlinePanelProps) {
         {headings.map((heading, index) => (
           <button
             key={index}
-            onClick={() => onClick(heading.line)}
+            onClick={() => scrollTo(heading.text)}
             className={cn(
               'w-full text-left px-2 py-1.5 rounded-md text-xs hover:bg-muted transition-colors truncate',
               heading.level === 1 && 'font-semibold text-sm',
-              heading.level === 2 && 'font-medium pl-3',
-              heading.level === 3 && 'text-muted-foreground pl-5',
-              heading.level >= 4 && 'text-muted-foreground/70 pl-7 text-[11px]'
+              heading.level === 2 && 'font-medium pl-4',
+              heading.level === 3 && 'text-muted-foreground pl-6',
+              heading.level >= 4 && 'text-muted-foreground/70 pl-8 text-[11px]'
             )}
             title={heading.text}
           >
@@ -63,23 +68,15 @@ function extractHeadings(content: string): HeadingItem[] {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-
-    // 匹配 ATX 标题：# ## ### 等
     const match = line.match(/^(#{1,6})\s+(.+)/);
     if (match) {
-      const level = match[1].length;
       const text = match[2]
-        .replace(/\*\*/g, '')  // 移除粗体
-        .replace(/\*/g, '')    // 移除斜体
-        .replace(/`/g, '')     // 移除代码
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // 移除链接，保留文本
+        .replace(/\*\*/g, '')
+        .replace(/\*/g, '')
+        .replace(/`/g, '')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
         .trim();
-
-      headings.push({
-        level,
-        text,
-        line: i + 1,
-      });
+      headings.push({ level: match[1].length, text });
     }
   }
 

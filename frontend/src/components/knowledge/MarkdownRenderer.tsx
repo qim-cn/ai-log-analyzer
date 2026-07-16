@@ -42,6 +42,19 @@ export function MarkdownRenderer({ content, onLinkClick }: MarkdownRendererProps
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          // 标题加上 id，配合大纲面板跳转
+          h1: ({ children, ...props }) => {
+            const text = String(children).replace(/[^a-zA-Z0-9一-鿿]/g, '-').slice(0, 40);
+            return <h1 id={`heading-${text}`} className="scroll-mt-20" {...props}>{children}</h1>;
+          },
+          h2: ({ children, ...props }) => {
+            const text = String(children).replace(/[^a-zA-Z0-9一-鿿]/g, '-').slice(0, 40);
+            return <h2 id={`heading-${text}`} className="scroll-mt-20" {...props}>{children}</h2>;
+          },
+          h3: ({ children, ...props }) => {
+            const text = String(children).replace(/[^a-zA-Z0-9一-鿿]/g, '-').slice(0, 40);
+            return <h3 id={`heading-${text}`} className="scroll-mt-20" {...props}>{children}</h3>;
+          },
           // 代码块
           code({ className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || '');
