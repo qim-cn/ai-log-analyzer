@@ -24,7 +24,7 @@ from app.middlewares.error_handler import ValidationError
 from app.models.message import MessageRole
 from app.services.ai_service import ai_service
 from app.services.context_manager import get_context_manager
-from app.services.local_analysis_service import try_local_analysis, feed_known_pattern
+from app.services.local_analysis_service import try_local_analysis, feed_known_pattern, search_resolved
 from app.services.log_service import log_service
 from app.services.message_service import message_service
 from app.types.message_types import SendMessageRequest
@@ -50,12 +50,22 @@ async def send_message(body: SendMessageRequest, request: Request):
     if not body.content.strip():
         raise ValidationError("消息内容不能为空")
 
-    # 1. 保存用户消息
+    # 1. 保存用户消息，并自动提取标题（首条消息）
     message_service.create_message(
         session_id=body.session_id,
         role=MessageRole.USER,
         content=body.content,
     )
+    try:
+        from app.services.session_service import session_service as _ss
+        sess = _ss.get_session(body.session_id)
+        if sess and sess.title in ("新对话", ""):
+            # 取消息前 30 字符作为标题
+            title = body.content.strip().replace("\n", " ")[:30]
+            if title:
+                _ss.update_title(body.session_id, title)
+    except Exception:
+        pass
 
     # 2. 获取日志摘要
     log_summary = log_service.get_logs_summary_for_session(body.session_id)
@@ -135,7 +145,10 @@ async def send_message(body: SendMessageRequest, request: Request):
                 except Exception:
                     pass
 
-                yield _sse_event({"done": True, "source": source_tag})
+                yield _sse_event({
+                    "done": True, "source": source_tag,
+                    "session_title": _get_session_title(body.session_id),
+                })
                 return
 
             # ── 本地未命中 → 调用 AI ──
@@ -176,7 +189,10 @@ async def send_message(body: SendMessageRequest, request: Request):
                 except Exception:
                     pass
 
-            yield _sse_event({"done": True, "source": "AI 分析"})
+            yield _sse_event({
+                "done": True, "source": "AI 分析",
+                "session_title": _get_session_title(body.session_id),
+            })
 
         except Exception as e:
             logger.exception(f"流式响应异常: {e}")
@@ -204,3 +220,12 @@ async def send_message(body: SendMessageRequest, request: Request):
 def _sse_event(data: dict) -> str:
     """格式化 SSE 事件"""
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _get_session_title(session_id: str) -> str:
+    try:
+        from app.repositories.session_repository import session_repository
+        s = session_repository.get_by_id(session_id)
+        return s.title if s else ""
+    except Exception:
+        return ""

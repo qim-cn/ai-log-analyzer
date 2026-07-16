@@ -10,6 +10,7 @@ interface StreamOptions {
   onDone: () => void;
   onError: (error: string) => void;
   onThinking?: (message: string) => void;
+  onSessionTitle?: (title: string) => void;
   maxRetries?: number;
 }
 
@@ -71,6 +72,9 @@ export function useStreaming() {
                 } else if (data.content) {
                   onChunk(data.content);
                 } else if (data.done) {
+                  if (data.session_title && options.onSessionTitle) {
+                    options.onSessionTitle(data.session_title);
+                  }
                   onDone();
                   return;
                 } else if (data.error) {

@@ -435,3 +435,19 @@ async def delete_linux_entry(entry_id: int, request: Request):
     if not ok:
         return {"code": 404, "message": "条目不存在", "data": None}
     return {"code": 0, "message": "success", "data": None}
+
+
+@router.get("/batch-risk", response_model=dict)
+async def get_batch_risk():
+    """批量质量风险统计（公开）"""
+    from app.config.database import get_connection
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT pattern, severity, count, first_seen, last_seen "
+        "FROM error_patterns WHERE count >= 2 "
+        "ORDER BY count DESC, last_seen DESC LIMIT 20"
+    ).fetchall()
+    return {
+        "code": 0, "message": "success",
+        "data": [dict(r) for r in rows],
+    }

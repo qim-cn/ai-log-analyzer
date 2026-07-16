@@ -173,7 +173,48 @@ def try_local_analysis(query: str, log_snippet: str = "") -> tuple[str | None, s
     lines.append("> ⚡ 以上为本地分析结果，基于日志模式匹配和历史知识库。")
     lines.append("> 如需更深入分析，请提供更多日志上下文或具体问题。")
 
+    # 历史案例检索
+    try:
+        history = search_resolved(combined)
+        if history:
+            lines.append("")
+            lines.append("**📚 相似历史案例：**")
+            for h in history:
+                lines.append(f"- [{h['title']}]({h['filename']})  (相似度: {'⭐' * h['score']})")
+    except Exception:
+        pass
+
     return "\n".join(lines), "本地分析"
+
+
+def search_resolved(query: str, limit: int = 3) -> list[dict]:
+    """从已解决目录搜历史案例"""
+    import os
+    from pathlib import Path
+    rd = Path("/resolved")
+    if not rd.exists():
+        return []
+    results = []
+    words = query.lower().split()
+    for md in rd.rglob("*.md"):
+        if md.name == "index.md" or ".obsidian" in md.parts:
+            continue
+        try:
+            content = md.read_text(encoding="utf-8")[:2000]
+        except Exception:
+            continue
+        score = sum(1 for w in words if w in content.lower())
+        if score > 0:
+            # 提取标题
+            title = md.stem
+            for line in content.split("\n"):
+                if line.startswith("title:"):
+                    title = line.split(":", 1)[1].strip().strip('"')
+                    break
+            rel = md.relative_to(rd)
+            results.append({"filename": str(rel), "title": title, "score": score})
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results[:limit]
 
 
 def feed_known_pattern(log_text: str) -> None:

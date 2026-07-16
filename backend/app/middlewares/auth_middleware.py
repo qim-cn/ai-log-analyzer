@@ -37,7 +37,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # 公开 GET 端点（无需登录）
         if request.method == "GET":
-            if path.startswith(("/api/knowledge/linux", "/api/obsidian/resolved", "/api/obsidian/tree", "/api/obsidian/file", "/api/obsidian/notes", "/api/obsidian/search", "/api/obsidian/browse-paths")):
+            if path.startswith(("/api/knowledge/linux", "/api/knowledge/batch-risk", "/api/obsidian/resolved", "/api/obsidian/tree", "/api/obsidian/file", "/api/obsidian/notes", "/api/obsidian/search", "/api/obsidian/browse-paths")):
                 return await call_next(request)
 
         # OPTIONS 请求不需要认证
