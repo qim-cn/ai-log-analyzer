@@ -737,24 +737,15 @@ updated: {datetime.utcnow().isoformat()}Z
             return self._local_get_file_content(path)
 
     async def _get_file_content_webdav(self, path: str) -> Optional[str]:
-        """通过 WebDAV 获取文件内容"""
+        """通过 WebDAV 获取文件内容。path 为 vault 内相对路径"""
         config = _get_settings()
-
         auth = _webdav_auth(config["webdav_user"], config["webdav_pass"])
         base_url = config["webdav_url"].rstrip("/")
-        vault_path = config["vault_path"].strip("/")
-
-        # path 已经是相对于 vault_path 的相对路径（来自 tree 接口）
-        # 如果传入的是旧版带 Obsidian Vault 前缀的绝对路径，尝试清理
-        clean_path = path
-        for prefix in ("Obsidian Vault/", vault_path + "/"):
-            if clean_path.startswith(prefix):
-                clean_path = clean_path[len(prefix):]
-        if clean_path.startswith("/"):
-            clean_path = clean_path.lstrip("/")
-
-        file_url = _make_webdav_url(base_url, f"{vault_path}/{clean_path}")
-        return await _webdav_get(file_url, auth)
+        # path 去掉可能的 Obsidian Vault/ 前缀
+        clean = unquote(path).lstrip("/")
+        bp = self._base_path + "/" if getattr(self, "_base_path", "") else ""
+        clean = clean.removeprefix(bp) if bp else clean
+        return await _webdav_get(_make_webdav_url(base_url, clean), auth)
 
     async def search_notes(self, query: str) -> list[dict]:
         """全文搜索笔记（WebDAV 优先，本地回退）"""

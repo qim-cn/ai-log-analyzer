@@ -50,16 +50,21 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [showBrowser, setShowBrowser] = useState(false);
   const [tree, setTree] = useState<FileTreeNode[]>([]);
   const [treeLoading, setTreeLoading] = useState(false);
+  const [treeError, setTreeError] = useState('');
   const [currentPath, setCurrentPath] = useState<string[]>([]);
   const [browserSelected, setBrowserSelected] = useState('');
 
   const fetchTree = useCallback(async (relPath: string = '') => {
     setTreeLoading(true);
+    setTreeError('');
     try {
-      const data = await obsidianService.getFileTree(relPath);
-      setTree(data.tree || []);
-    } catch (err) { console.error(err); }
-    finally { setTreeLoading(false); }
+      const r = await fetch(`/api/obsidian/tree${relPath ? `?path=${encodeURIComponent(relPath)}` : ''}`);
+      const d = await r.json();
+      if (d.code === 0) setTree(d.data?.tree || []);
+      else setTreeError(d.message || '加载失败');
+    } catch (err: any) {
+      setTreeError(err.message || '网络错误');
+    } finally { setTreeLoading(false); }
   }, []);
 
   useEffect(() => {
@@ -332,7 +337,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                         <span className="text-[11px] text-muted-foreground">..</span>
                       </button>
                     )}
-                    {treeLoading ? (
+                    {treeError ? (
+                      <div className="text-center py-4 text-[11px] text-destructive">{treeError}</div>
+                    ) : treeLoading ? (
                       <div className="text-center py-4 text-[11px] text-muted-foreground">
                         <Loader2 size={14} className="animate-spin mx-auto mb-1" />加载中...
                       </div>
