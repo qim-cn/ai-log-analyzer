@@ -190,28 +190,28 @@ tags:
 
 # [{model}] {title}
 
-## 📋 日志关键字段
+## 📋 测试报错日志
 ```log
 {key_fields}
 ```
 
-## 🔍 AI 分析 — 可能原因
-{sections.get('cause', '（分析结果解析失败，请查看原始分析）')}
+## 🎯 故障部件定位
+{sections.get('cause', '（待补充）')}
 
-## 🛠️ 排查方法
+## 🔬 定位过程
 {sections.get('method', '（待补充）')}
 
-## ✅ 解决方案
-{sections.get('solution', '（分析结果解析失败，请查看原始分析）')}
+## 🔧 维修操作
+{sections.get('solution', '（待补充）')}
 
-## 📈 后续改善
-{sections.get('improvement', '（待补充）')}
+## ⚠️ 批量风险评估
+{sections.get('improvement', '（个案处理，暂不升级）')}
 """
     return content
 
 
 def parse_analysis(analysis: str) -> dict:
-    """解析 AI 分析结果为结构化内容"""
+    """解析 AI 分析结果为结构化内容（产线测试流程版本）"""
     sections = {
         "summary": "",
         "cause": "",
@@ -228,27 +228,27 @@ def parse_analysis(analysis: str) -> dict:
     for line in lines:
         lower = line.lower().strip()
 
-        if any(kw in lower for kw in ["日志概要", "日志摘要", "概要"]):
+        if any(kw in lower for kw in ["测试报错", "报错日志", "日志概要", "日志摘要", "概要", "测试现象"]):
             if current_section and current_content:
                 sections[current_section] = "\n".join(current_content)
             current_section = "summary"
             current_content = []
-        elif any(kw in lower for kw in ["故障原因", "原因分析", "根因", "可能原因"]):
+        elif any(kw in lower for kw in ["故障部件", "部件定位", "故障定位", "故障原因", "原因分析", "根因", "可能原因"]):
             if current_section and current_content:
                 sections[current_section] = "\n".join(current_content)
             current_section = "cause"
             current_content = []
-        elif any(kw in lower for kw in ["排查方法", "排查过程", "诊断方法", "方法"]):
+        elif any(kw in lower for kw in ["定位过程", "排查方法", "排查过程", "诊断方法", "方法", "分析步骤"]):
             if current_section and current_content:
                 sections[current_section] = "\n".join(current_content)
             current_section = "method"
             current_content = []
-        elif any(kw in lower for kw in ["解决方案", "解决方法", "处理方案", "维修建议"]):
+        elif any(kw in lower for kw in ["维修操作", "维修方案", "维修建议", "解决方案", "解决方法", "处理方案", "更换方案"]):
             if current_section and current_content:
                 sections[current_section] = "\n".join(current_content)
             current_section = "solution"
             current_content = []
-        elif any(kw in lower for kw in ["后续改善", "改善建议", "预防措施", "改进", "后续"]):
+        elif any(kw in lower for kw in ["批量风险", "风险评估", "质量事件", "预防措施", "改善建议", "后续改善", "后续", "改善", "改进"]):
             if current_section and current_content:
                 sections[current_section] = "\n".join(current_content)
             current_section = "improvement"
