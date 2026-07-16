@@ -4,13 +4,14 @@
  */
 
 import { useState, useEffect } from 'react';
-import { BookOpen, FileText, ChevronRight, RefreshCw, Network, Activity } from 'lucide-react';
+import { BookOpen, FileText, ChevronRight, RefreshCw, Network, Activity, Terminal } from 'lucide-react';
 import { obsidianService, type NoteInfo } from '@/services/obsidianService';
 import { KnowledgeGraph } from './KnowledgeGraph';
 import { AnomalyDashboard } from './AnomalyDashboard';
+import { LinuxKnowledgePanel } from './LinuxKnowledgePanel';
 import { cn } from '@/utils';
 
-type Tab = 'notes' | 'graph' | 'anomalies';
+type Tab = 'notes' | 'graph' | 'anomalies' | 'linux';
 
 interface KnowledgeBasePanelProps {
   className?: string;
@@ -109,6 +110,18 @@ export function KnowledgeBasePanel({ className }: KnowledgeBasePanelProps) {
             <Activity size={12} />
             异常检测
           </button>
+          <button
+            onClick={() => setActiveTab('linux')}
+            className={cn(
+              'px-3 py-1.5 text-xs rounded-t-md transition-colors flex items-center gap-1',
+              activeTab === 'linux'
+                ? 'bg-muted text-foreground font-medium'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <Terminal size={12} />
+            Linux
+          </button>
         </div>
       </div>
 
@@ -121,6 +134,10 @@ export function KnowledgeBasePanel({ className }: KnowledgeBasePanelProps) {
         ) : activeTab === 'anomalies' ? (
           <div className="h-full">
             <AnomalyDashboard />
+          </div>
+        ) : activeTab === 'linux' ? (
+          <div className="h-full">
+            <LinuxKnowledgePanel />
           </div>
         ) : selectedNote ? (
           <div className="h-full flex flex-col">

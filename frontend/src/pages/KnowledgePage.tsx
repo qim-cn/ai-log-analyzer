@@ -13,10 +13,12 @@ import {
   ChevronRight,
   ChevronDown,
   RefreshCw,
+  Terminal,
 } from 'lucide-react';
 import { obsidianService, type FileTreeNode } from '@/services/obsidianService';
 import { MarkdownRenderer } from '@/components/knowledge/MarkdownRenderer';
 import { OutlinePanel } from '@/components/knowledge/OutlinePanel';
+import { LinuxKnowledgePanel } from '@/components/knowledge/LinuxKnowledgePanel';
 import { cn } from '@/utils';
 
 interface KnowledgePageProps {
@@ -25,6 +27,7 @@ interface KnowledgePageProps {
 }
 
 export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
+  const [activeView, setActiveView] = useState<'obsidian' | 'linux'>('obsidian');
   const [tree, setTree] = useState<FileTreeNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPath, setSelectedPath] = useState<string | null>(initialPath || null);
@@ -108,16 +111,51 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
           <ArrowLeft size={18} />
         </button>
         <div className="font-semibold text-sm">知识库</div>
+
+        {/* View Tabs */}
+        <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
+          <button
+            onClick={() => setActiveView('obsidian')}
+            className={cn(
+              'px-3 py-1 rounded-md text-xs transition-colors',
+              activeView === 'obsidian'
+                ? 'bg-background text-foreground shadow-sm font-medium'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            Obsidian
+          </button>
+          <button
+            onClick={() => setActiveView('linux')}
+            className={cn(
+              'px-3 py-1 rounded-md text-xs transition-colors flex items-center gap-1',
+              activeView === 'linux'
+                ? 'bg-background text-foreground shadow-sm font-medium'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <Terminal size={12} />
+            Linux
+          </button>
+        </div>
+
         <div className="flex-1" />
-        <button
-          onClick={fetchTree}
-          className="p-1.5 hover:bg-muted rounded-lg transition-colors"
-          title="刷新"
-        >
-          <RefreshCw size={15} />
-        </button>
+        {activeView === 'obsidian' && (
+          <button
+            onClick={fetchTree}
+            className="p-1.5 hover:bg-muted rounded-lg transition-colors"
+            title="刷新"
+          >
+            <RefreshCw size={15} />
+          </button>
+        )}
       </div>
 
+      {activeView === 'linux' ? (
+        <div className="flex-1 overflow-hidden">
+          <LinuxKnowledgePanel />
+        </div>
+      ) : (
       <div className="flex-1 flex overflow-hidden">
         {/* 左侧：文件树 */}
         <aside className="w-64 border-r border-border flex flex-col bg-card">
@@ -202,6 +240,7 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
           </aside>
         )}
       </div>
+      )}
     </div>
   );
 }
