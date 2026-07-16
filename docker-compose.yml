@@ -1,4 +1,3 @@
-
 services:
   frontend:
     build:
@@ -26,60 +25,19 @@ services:
       - DATABASE_PATH=/data/app.db
       - LOG_STORAGE_PATH=/data/logs
       - MAX_FILE_SIZE_MB=50
-      # 上下文最大 token 数，建议通过 .env 配置，默认 8000
-      # - MAX_CONTEXT_TOKENS=8000
-      # 本地知识库路径（容器内挂载点，需在 volumes 中自行挂载）
       - OBSIDIAN_LOCAL_PATH=/vault
-      # 容器访问宿主机本地服务（Ollama、WebDAV 等）
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
     volumes:
       - app-data:/data
+      - /mnt/obsidian/奇梦网络工坊:/vault:rw
     restart: unless-stopped
     networks:
       - app-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./backend/grafana/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus-data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
-    restart: unless-stopped
-    networks:
-      - app-network
-
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3002:3000"
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
-      - GF_USERS_ALLOW_SIGN_UP=false
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./backend/grafana/dashboard.json:/etc/grafana/provisioning/dashboards/dashboard.json
-    restart: unless-stopped
-    networks:
-      - app-network
-    depends_on:
-      - prometheus
-
 volumes:
   app-data:
-  prometheus-data:
-  grafana-data:
 
 networks:
   app-network:

@@ -193,7 +193,7 @@ async def get_log_clusters(log_id: str, request: Request):
 
 
 @router.get("/{log_id}/similar", response_model=dict)
-async def find_similar_logs(log_id: str, limit: int = 5, request: Request):
+async def find_similar_logs(log_id: str, request: Request, limit: int = 5):
     """
     查找相似的历史日志
 
