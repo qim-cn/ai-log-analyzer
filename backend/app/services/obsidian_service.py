@@ -702,8 +702,8 @@ updated: {datetime.utcnow().isoformat()}Z
         dir_url = f"{self._webdav_root}/{self._base_path}/{path.strip('/')}" if path.strip("/") else base_url
         return await self._list_dir(auth, dir_url)
 
-    async def _list_dir(self, auth, dir_url):
-        """列出目录内容 (WebDAV)，href 直接用于递归拼接"""
+    async def _list_dir(self, auth, dir_url, depth: int = 0):
+        """列出目录内容。depth=0 时只列一层（不递归），提升性能"""
         items = await _webdav_list(dir_url, auth)
         from urllib.parse import urlparse
         cur = urlparse(dir_url).path.rstrip("/")
@@ -715,13 +715,12 @@ updated: {datetime.utcnow().isoformat()}Z
             if name.startswith("."): continue
             if unquote(href.rstrip("/")) == unquote(cur): continue
 
-            # 相对路径：去掉 /Obsidian Vault/ 前缀
             raw = unquote(href).lstrip("/")
             bp = self._base_path + "/" if self._base_path else ""
             rel = raw.removeprefix(bp) if bp else raw
 
             if item.get("is_collection"):
-                children = await self._list_dir(auth, f"{self._webdav_root}{href}")
+                children = await self._list_dir(auth, f"{self._webdav_root}{href}", depth + 1) if depth < 2 else []
                 result.append({"name": name, "path": rel, "type": "folder", "children": children})
             elif name.endswith((".md", ".canvas", ".txt", ".log", ".csv", ".json", ".yaml", ".yml", ".py", ".sh", ".conf")):
                 result.append({"name": name, "path": rel, "type": "file"})
