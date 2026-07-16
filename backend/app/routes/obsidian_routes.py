@@ -192,3 +192,40 @@ async def update_settings(body: UpdateObsidianSettingsRequest, request: Request)
             auto_save=settings["auto_save"],
         ),
     }
+
+
+# ============================================================
+# 已解决记录（本地文件系统，不依赖 WebDAV）
+# ============================================================
+
+from pathlib import Path
+
+RESOLVED_DIR = Path("/resolved")
+
+
+@router.get("/resolved/list", response_model=dict)
+async def list_resolved():
+    """列出已解决的故障记录"""
+    files = []
+    if RESOLVED_DIR.exists():
+        for f in sorted(RESOLVED_DIR.glob("*.md"), key=lambda p: p.name, reverse=True):
+            if f.name == "index.md":
+                continue
+            stat = f.stat()
+            files.append({
+                "filename": f.name,
+                "title": f.stem,
+                "size": stat.st_size,
+                "mtime": stat.st_mtime,
+            })
+    return {"code": 0, "message": "success", "data": files}
+
+
+@router.get("/resolved/file", response_model=dict)
+async def get_resolved_file(filename: str):
+    """读取已解决记录的内容"""
+    file_path = (RESOLVED_DIR / filename).resolve()
+    if not str(file_path).startswith(str(RESOLVED_DIR.resolve())) or not file_path.exists():
+        return {"code": 404, "message": "文件不存在", "data": None}
+    content = file_path.read_text(encoding="utf-8")
+    return {"code": 0, "message": "success", "data": {"filename": filename, "content": content}}

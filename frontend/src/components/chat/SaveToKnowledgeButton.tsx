@@ -1,10 +1,11 @@
 /**
- * 保存到知识库按钮
- * 显示在 AI 回复下方
+ * AI 解决方案确认组件
+ * 显示在 AI 回复下方，询问用户问题是否解决
+ * 已解决 → 保存到知识库；未解决 → 不保存
  */
 
 import { useState } from 'react';
-import { BookOpen, Loader2, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { obsidianService } from '@/services/obsidianService';
 
 interface SaveToKnowledgeButtonProps {
@@ -22,30 +23,26 @@ export function SaveToKnowledgeButton({
 }: SaveToKnowledgeButtonProps) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [showDialog, setShowDialog] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [showTitleInput, setShowTitleInput] = useState(false);
   const [title, setTitle] = useState('');
-  const [resolved, setResolved] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSave = async () => {
-    if (!title.trim()) {
-      setError('请输入标题');
-      return;
-    }
+  const handleResolved = async () => {
+    const finalTitle = title.trim() || logFilename?.replace(/\.[^.]+$/, '') + ' 故障分析' || `故障分析 ${new Date().toLocaleDateString('zh-CN')}`;
 
     setSaving(true);
     setError('');
     try {
       await obsidianService.save({
-        title: title.trim(),
+        title: finalTitle,
         log_summary: logSummary || '',
         log_snippet: logSnippet || '',
         analysis,
-        resolved,
+        resolved: true,
       });
       setSaved(true);
-      setShowDialog(false);
-      setTimeout(() => setSaved(false), 3000);
+      setTimeout(() => setSaved(false), 5000);
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败');
     } finally {
@@ -53,122 +50,63 @@ export function SaveToKnowledgeButton({
     }
   };
 
-  // 自动生成标题
-  const generateTitle = () => {
-    if (logFilename) {
-      const name = logFilename.replace(/\.[^.]+$/, '');
-      return `${name} 故障分析`;
-    }
-    return `服务器日志分析 ${new Date().toLocaleDateString('zh-CN')}`;
+  const handleDismiss = () => {
+    setDismissed(true);
   };
+
+  if (dismissed) return null;
 
   if (saved) {
     return (
-      <div className="flex items-center gap-1.5 text-xs text-success px-2 py-1">
+      <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 px-2 py-1">
         <CheckCircle2 size={12} />
-        <span>已保存到知识库</span>
+        <span>已保存到知识库 → 已解决/</span>
       </div>
     );
   }
 
   return (
-    <>
-      <button
-        onClick={() => {
-          setTitle(generateTitle());
-          setShowDialog(true);
-        }}
-        className="flex items-center gap-1.5 text-xs text-muted-foreground
-                   hover:text-primary px-2 py-1 rounded-md hover:bg-primary/5
-                   transition-colors"
-      >
-        <BookOpen size={12} />
-        <span>保存到知识库</span>
-      </button>
+    <div className="mt-2 border border-border/60 rounded-xl bg-card/50 p-3">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+        <span className="text-xs font-medium">该方案是否解决了问题？</span>
+      </div>
 
-      {/* 弹窗 */}
-      {showDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowDialog(false)} />
-          <div className="relative bg-card border border-border rounded-2xl shadow-surface-lg w-full max-w-md mx-4 animate-slide-up">
-            {/* Header */}
-            <div className="px-5 pt-5 pb-3">
-              <h3 className="font-semibold text-sm">保存到 Obsidian 知识库</h3>
-            </div>
-
-            {/* Content */}
-            <div className="px-5 pb-3 space-y-3">
-              <div>
-                <label className="text-xs font-medium mb-1.5 block text-muted-foreground">
-                  笔记标题
-                </label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="输入故障标题"
-                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm
-                             focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
-              </div>
-
-              <div className="text-[11px] text-muted-foreground/60">
-                将自动提取日志摘要和 AI 分析结果，按模板格式保存
-              </div>
-
-              {/* 已解决开关 */}
-              <label className="flex items-center gap-2 cursor-pointer">
-                <div
-                  onClick={() => setResolved(!resolved)}
-                  className={`relative w-9 h-5 rounded-full transition-colors ${
-                    resolved ? 'bg-emerald-500' : 'bg-muted-foreground/30'
-                  }`}
-                >
-                  <div
-                    className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
-                      resolved ? 'translate-x-[18px]' : 'translate-x-0.5'
-                    }`}
-                  />
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {resolved ? '保存到 📁 已解决/' : '保存到 📁 AI分析记录/'}
-                </span>
-              </label>
-
-              {error && (
-                <div className="text-xs text-destructive">{error}</div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex justify-end gap-2 px-5 pb-5">
-              <button
-                onClick={() => setShowDialog(false)}
-                className="px-4 py-2 rounded-xl text-sm font-medium
-                           bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="px-4 py-2 rounded-xl text-sm font-medium
-                           bg-primary text-primary-foreground hover:shadow-glow
-                           active:scale-95 transition-all disabled:opacity-50"
-              >
-                {saving ? (
-                  <span className="flex items-center gap-1.5">
-                    <Loader2 size={14} className="animate-spin" />
-                    保存中...
-                  </span>
-                ) : (
-                  '保存'
-                )}
-              </button>
-            </div>
-          </div>
+      {showTitleInput && (
+        <div className="mb-2">
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="故障标题（可选）"
+            className="w-full px-2.5 py-1.5 rounded-lg border border-input bg-background text-xs
+                       focus:outline-none focus:ring-2 focus:ring-primary/30"
+            onKeyDown={(e) => e.key === 'Enter' && handleResolved()}
+          />
         </div>
       )}
-    </>
+
+      {error && <div className="text-xs text-destructive mb-2">{error}</div>}
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => { setShowTitleInput(true); if (showTitleInput) handleResolved(); }}
+          disabled={saving}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium
+                     hover:bg-emerald-700 active:scale-95 transition-all disabled:opacity-50"
+        >
+          {saving ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+          {saving ? '保存中...' : '已解决，保存'}
+        </button>
+        <button
+          onClick={handleDismiss}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-medium
+                     hover:bg-muted/80 active:scale-95 transition-all"
+        >
+          <XCircle size={12} />
+          未解决
+        </button>
+      </div>
+    </div>
   );
 }

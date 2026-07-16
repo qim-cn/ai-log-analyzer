@@ -35,9 +35,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if any(path.startswith(prefix) for prefix in PUBLIC_PATH_PREFIXES):
             return await call_next(request)
 
-        # Linux 知识库：GET 公开，写操作需认证
-        if path.startswith("/api/knowledge/linux") and request.method == "GET":
-            return await call_next(request)
+        # 公开 GET 端点（无需登录）
+        if request.method == "GET":
+            if path.startswith(("/api/knowledge/linux", "/api/obsidian/resolved")):
+                return await call_next(request)
 
         # OPTIONS 请求不需要认证
         if request.method == "OPTIONS":

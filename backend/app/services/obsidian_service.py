@@ -502,11 +502,40 @@ class ObsidianService:
         user: str = "admin",
         resolved: bool = False,
     ) -> dict:
-        """保存笔记到 Obsidian 知识库。resolved=True → 已解决/ 目录"""
+        """保存笔记。resolved=True → 写入本地 /resolved/；否则走 WebDAV"""
+        if resolved:
+            return self._save_resolved_local(title, log_summary, log_snippet, analysis, user)
         if self._is_webdav_configured():
-            return await self._save_note_webdav(title, log_summary, log_snippet, analysis, user, resolved)
+            return await self._save_note_webdav(title, log_summary, log_snippet, analysis, user, False)
         else:
-            return self._local_save_note(title, log_summary, log_snippet, analysis, user, resolved)
+            return self._local_save_note(title, log_summary, log_snippet, analysis, user, False)
+
+    def _save_resolved_local(
+        self, title: str, log_summary: str, log_snippet: str,
+        analysis: str, user: str = "admin",
+    ) -> dict:
+        """已解决 → 直接写 /resolved/ 目录（SMB 挂载）"""
+        import os as _os
+        resolved_dir = Path("/resolved")
+        resolved_dir.mkdir(parents=True, exist_ok=True)
+
+        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+        safe_title = _sanitize_filename(title)
+        filename = f"{date_str}_{safe_title}.md"
+
+        content = generate_note_content(
+            title=title, log_summary=log_summary, log_snippet=log_snippet,
+            analysis=analysis, user=user,
+        )
+
+        file_path = resolved_dir / filename
+        try:
+            file_path.write_text(content, encoding="utf-8")
+            logger.info(f"Resolved note saved: {file_path}")
+            return {"success": True, "filename": filename, "message": "已保存到已解决目录"}
+        except Exception as e:
+            logger.error(f"Failed to save resolved note: {e}")
+            return {"success": False, "filename": "", "message": f"保存失败: {e}"}
 
     async def _save_note_webdav(
         self,

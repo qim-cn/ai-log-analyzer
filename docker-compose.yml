@@ -30,6 +30,8 @@ services:
       - no_proxy=192.168.31.5,localhost,127.0.0.1
     volumes:
       - app-data:/data
+      - /mnt/obsidian/服务器维修笔记/已解决:/resolved:rw
+      - /mnt/obsidian/服务器维修笔记/AI分析记录:/wip:rw
     restart: unless-stopped
     networks:
       - app-network

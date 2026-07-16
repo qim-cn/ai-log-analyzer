@@ -1,19 +1,13 @@
 /**
  * 知识库页面
  * 三栏布局：文件树 | 笔记内容 | 大纲
+ * Tab: Obsidian | 已解决 | Linux
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  ArrowLeft,
-  Search,
-  FileText,
-  Folder,
-  FolderOpen,
-  ChevronRight,
-  ChevronDown,
-  RefreshCw,
-  Terminal,
+  ArrowLeft, Search, FileText, Folder, FolderOpen, ChevronRight, ChevronDown,
+  RefreshCw, Terminal, CheckCircle2,
 } from 'lucide-react';
 import { obsidianService, type FileTreeNode } from '@/services/obsidianService';
 import { MarkdownRenderer } from '@/components/knowledge/MarkdownRenderer';
@@ -26,8 +20,15 @@ interface KnowledgePageProps {
   initialPath?: string;
 }
 
+interface ResolvedFile {
+  filename: string;
+  title: string;
+  size: number;
+  mtime: number;
+}
+
 export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
-  const [activeView, setActiveView] = useState<'obsidian' | 'linux'>('obsidian');
+  const [activeView, setActiveView] = useState<'obsidian' | 'resolved' | 'linux'>('resolved');
   const [tree, setTree] = useState<FileTreeNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPath, setSelectedPath] = useState<string | null>(initialPath || null);
@@ -37,135 +38,183 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
   const [searchResults, setSearchResults] = useState<{ path: string; title: string; snippet: string }[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // 获取文件树
+  // 已解决列表
+  const [resolvedFiles, setResolvedFiles] = useState<ResolvedFile[]>([]);
+  const [resolvedLoading, setResolvedLoading] = useState(false);
+
   const fetchTree = useCallback(async () => {
     setLoading(true);
     try {
       const data = await obsidianService.getFileTree();
       setTree(data.tree);
-    } catch (err) {
-      console.error('获取文件树失败:', err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error('获取文件树失败:', err); }
+    finally { setLoading(false); }
   }, []);
 
-  useEffect(() => {
-    fetchTree();
-  }, [fetchTree]);
+  const fetchResolved = useCallback(async () => {
+    setResolvedLoading(true);
+    try {
+      const r = await fetch('/api/obsidian/resolved/list');
+      const d = await r.json();
+      setResolvedFiles(d.data || []);
+    } catch (err) { console.error(err); }
+    finally { setResolvedLoading(false); }
+  }, []);
 
-  // 获取文件内容
+  useEffect(() => { fetchTree(); fetchResolved(); }, [fetchTree, fetchResolved]);
+
   const fetchContent = useCallback(async (path: string) => {
     setLoadingContent(true);
     try {
       const data = await obsidianService.getFileContent(path);
       setFileContent(data.content);
-    } catch (err) {
-      setFileContent('加载失败');
-    } finally {
-      setLoadingContent(false);
-    }
+    } catch (err) { setFileContent('加载失败'); }
+    finally { setLoadingContent(false); }
   }, []);
 
-  // 点击文件
-  const handleFileClick = useCallback(
-    (path: string) => {
-      setSelectedPath(path);
-      fetchContent(path);
-    },
-    [fetchContent]
-  );
+  const fetchResolvedContent = useCallback(async (filename: string) => {
+    setLoadingContent(true);
+    try {
+      const r = await fetch(`/api/obsidian/resolved/file?filename=${encodeURIComponent(filename)}`);
+      const d = await r.json();
+      setFileContent(d.data?.content || '空文件');
+      setSelectedPath(filename);
+    } catch (err) { setFileContent('加载失败'); }
+    finally { setLoadingContent(false); }
+  }, []);
 
-  // 搜索
+  const handleFileClick = useCallback((path: string) => {
+    setSelectedPath(path);
+    fetchContent(path);
+  }, [fetchContent]);
+
   const handleSearch = useCallback(async () => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
+    if (!searchQuery.trim()) { setSearchResults([]); return; }
     setIsSearching(true);
     try {
       const data = await obsidianService.search(searchQuery);
       setSearchResults(data.results);
-    } catch (err) {
-      console.error('搜索失败:', err);
-    } finally {
-      setIsSearching(false);
-    }
+    } catch (err) { console.error('搜索失败:', err); }
+    finally { setIsSearching(false); }
   }, [searchQuery]);
 
-  // 大纲跳转
   const handleOutlineClick = useCallback((lineNumber: number) => {
     const element = document.getElementById(`line-${lineNumber}`);
     element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
+  const refreshAll = () => { fetchTree(); fetchResolved(); };
+
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* Header */}
       <div className="h-12 border-b border-border bg-card flex items-center px-4 gap-3">
-        <button
-          onClick={onBack}
-          className="p-1.5 hover:bg-muted rounded-lg transition-colors"
-        >
+        <button onClick={onBack} className="p-1.5 hover:bg-muted rounded-lg transition-colors">
           <ArrowLeft size={18} />
         </button>
         <div className="font-semibold text-sm">知识库</div>
 
         {/* View Tabs */}
         <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
-          <button
-            onClick={() => setActiveView('obsidian')}
-            className={cn(
-              'px-3 py-1 rounded-md text-xs transition-colors',
-              activeView === 'obsidian'
-                ? 'bg-background text-foreground shadow-sm font-medium'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            Obsidian
+          <button onClick={() => setActiveView('resolved')} className={cn(
+            'px-3 py-1 rounded-md text-xs transition-colors flex items-center gap-1',
+            activeView === 'resolved' ? 'bg-background text-foreground shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'
+          )}>
+            <CheckCircle2 size={12} /> 已解决
           </button>
-          <button
-            onClick={() => setActiveView('linux')}
-            className={cn(
-              'px-3 py-1 rounded-md text-xs transition-colors flex items-center gap-1',
-              activeView === 'linux'
-                ? 'bg-background text-foreground shadow-sm font-medium'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            <Terminal size={12} />
-            Linux
-          </button>
+          <button onClick={() => setActiveView('obsidian')} className={cn(
+            'px-3 py-1 rounded-md text-xs transition-colors',
+            activeView === 'obsidian' ? 'bg-background text-foreground shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'
+          )}>Obsidian</button>
+          <button onClick={() => setActiveView('linux')} className={cn(
+            'px-3 py-1 rounded-md text-xs transition-colors flex items-center gap-1',
+            activeView === 'linux' ? 'bg-background text-foreground shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'
+          )}><Terminal size={12} />Linux</button>
         </div>
 
         <div className="flex-1" />
-        {activeView === 'obsidian' && (
-          <button
-            onClick={fetchTree}
-            className="p-1.5 hover:bg-muted rounded-lg transition-colors"
-            title="刷新"
-          >
-            <RefreshCw size={15} />
-          </button>
-        )}
+        <button onClick={refreshAll} className="p-1.5 hover:bg-muted rounded-lg transition-colors" title="刷新">
+          <RefreshCw size={15} />
+        </button>
       </div>
 
-      {activeView === 'linux' ? (
+      {/* Linux 面板全屏 */}
+      {activeView === 'linux' && (
         <div className="flex-1 overflow-hidden">
           <LinuxKnowledgePanel />
         </div>
-      ) : (
+      )}
+
+      {/* 已解决面板 */}
+      {activeView === 'resolved' && (
+        <div className="flex-1 flex overflow-hidden">
+          <aside className="w-64 border-r border-border flex flex-col bg-card">
+            <div className="p-2 border-b border-border text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              <CheckCircle2 size={12} className="text-emerald-500" />
+              已解决故障记录
+              <span className="opacity-60">({resolvedFiles.length})</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2">
+              {resolvedLoading ? (
+                <div className="text-center text-muted-foreground py-4 text-xs">加载中...</div>
+              ) : resolvedFiles.length === 0 ? (
+                <div className="text-center text-muted-foreground py-8 text-xs">暂无已解决记录</div>
+              ) : (
+                <div className="space-y-0.5">
+                  {resolvedFiles.map((f) => (
+                    <button
+                      key={f.filename}
+                      onClick={() => fetchResolvedContent(f.filename)}
+                      className={cn(
+                        'w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left transition-colors',
+                        selectedPath === f.filename
+                          ? 'bg-primary/10 text-primary border border-primary/20'
+                          : 'hover:bg-muted'
+                      )}
+                    >
+                      <FileText size={13} className={selectedPath === f.filename ? 'text-primary' : 'text-muted-foreground'} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs truncate">{f.title}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </aside>
+          <main className="flex-1 overflow-y-auto">
+            {loadingContent ? (
+              <div className="flex items-center justify-center h-full text-muted-foreground text-sm">加载中...</div>
+            ) : fileContent && selectedPath ? (
+              <div className="max-w-[800px] mx-auto px-8 py-6">
+                <MarkdownRenderer content={fileContent} onLinkClick={handleFileClick} />
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                <div className="text-center">
+                  <CheckCircle2 size={48} className="mx-auto mb-4 opacity-20 text-emerald-500" />
+                  <div className="text-sm">选择左侧已解决记录查看详情</div>
+                </div>
+              </div>
+            )}
+          </main>
+          {fileContent && selectedPath && (
+            <aside className="w-56 border-l border-border bg-card overflow-y-auto">
+              <OutlinePanel content={fileContent} onClick={handleOutlineClick} />
+            </aside>
+          )}
+        </div>
+      )}
+
+      {/* Obsidian 面板 */}
+      {activeView === 'obsidian' && (
       <div className="flex-1 flex overflow-hidden">
-        {/* 左侧：文件树 */}
         <aside className="w-64 border-r border-border flex flex-col bg-card">
-          {/* 搜索框 */}
           <div className="p-2 border-b border-border">
             <div className="relative">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
-                type="text"
-                value={searchQuery}
+                type="text" value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 placeholder="搜索笔记..."
@@ -174,8 +223,6 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
               />
             </div>
           </div>
-
-          {/* 文件列表 */}
           <div className="flex-1 overflow-y-auto p-2">
             {isSearching ? (
               <div className="text-center text-muted-foreground py-4 text-xs">搜索中...</div>
@@ -184,19 +231,13 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
                 {searchResults.map((result) => (
                   <button
                     key={result.path}
-                    onClick={() => {
-                      handleFileClick(result.path);
-                      setSearchResults([]);
-                      setSearchQuery('');
-                    }}
+                    onClick={() => { handleFileClick(result.path); setSearchResults([]); setSearchQuery(''); }}
                     className="w-full flex items-start gap-2 px-2 py-2 rounded-lg hover:bg-muted text-left"
                   >
                     <FileText size={14} className="text-muted-foreground shrink-0 mt-0.5" />
                     <div className="min-w-0">
                       <div className="text-xs font-medium truncate">{result.title}</div>
-                      <div className="text-[10px] text-muted-foreground/60 truncate mt-0.5">
-                        {result.snippet}
-                      </div>
+                      <div className="text-[10px] text-muted-foreground/60 truncate mt-0.5">{result.snippet}</div>
                     </div>
                   </button>
                 ))}
@@ -204,21 +245,13 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
             ) : loading ? (
               <div className="text-center text-muted-foreground py-4 text-xs">加载中...</div>
             ) : (
-              <FileTree
-                nodes={tree}
-                selectedPath={selectedPath}
-                onFileClick={handleFileClick}
-              />
+              <FileTree nodes={tree} selectedPath={selectedPath} onFileClick={handleFileClick} />
             )}
           </div>
         </aside>
-
-        {/* 中间：笔记内容 */}
         <main className="flex-1 overflow-y-auto">
           {loadingContent ? (
-            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-              加载中...
-            </div>
+            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">加载中...</div>
           ) : fileContent ? (
             <div className="max-w-[800px] mx-auto px-8 py-6">
               <MarkdownRenderer content={fileContent} onLinkClick={handleFileClick} />
@@ -232,8 +265,6 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
             </div>
           )}
         </main>
-
-        {/* 右侧：大纲 */}
         {fileContent && (
           <aside className="w-56 border-l border-border bg-card overflow-y-auto">
             <OutlinePanel content={fileContent} onClick={handleOutlineClick} />
@@ -261,11 +292,8 @@ function FileTree({ nodes, selectedPath, onFileClick, level = 0 }: FileTreeProps
     <div className="space-y-0.5">
       {nodes.map((node) => (
         <FileTreeNodeComponent
-          key={node.path}
-          node={node}
-          selectedPath={selectedPath}
-          onFileClick={onFileClick}
-          level={level}
+          key={node.path} node={node} selectedPath={selectedPath}
+          onFileClick={onFileClick} level={level}
         />
       ))}
     </div>
@@ -279,12 +307,7 @@ interface FileTreeNodeComponentProps {
   level: number;
 }
 
-function FileTreeNodeComponent({
-  node,
-  selectedPath,
-  onFileClick,
-  level,
-}: FileTreeNodeComponentProps) {
+function FileTreeNodeComponent({ node, selectedPath, onFileClick, level }: FileTreeNodeComponentProps) {
   const [expanded, setExpanded] = useState(level < 2);
 
   if (node.type === 'folder') {
@@ -292,44 +315,27 @@ function FileTreeNodeComponent({
       <div>
         <button
           onClick={() => setExpanded(!expanded)}
-          className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg
-                     hover:bg-muted transition-colors text-left"
+          className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-muted transition-colors text-left"
           style={{ paddingLeft: `${level * 12 + 8}px` }}
         >
-          {expanded ? (
-            <ChevronDown size={12} className="text-muted-foreground" />
-          ) : (
-            <ChevronRight size={12} className="text-muted-foreground" />
-          )}
-          {expanded ? (
-            <FolderOpen size={14} className="text-primary" />
-          ) : (
-            <Folder size={14} className="text-primary" />
-          )}
+          {expanded ? <ChevronDown size={12} className="text-muted-foreground" /> : <ChevronRight size={12} className="text-muted-foreground" />}
+          {expanded ? <FolderOpen size={14} className="text-primary" /> : <Folder size={14} className="text-primary" />}
           <span className="text-xs font-medium truncate">{node.name}</span>
         </button>
         {expanded && node.children && (
-          <FileTree
-            nodes={node.children}
-            selectedPath={selectedPath}
-            onFileClick={onFileClick}
-            level={level + 1}
-          />
+          <FileTree nodes={node.children} selectedPath={selectedPath} onFileClick={onFileClick} level={level + 1} />
         )}
       </div>
     );
   }
 
-  // 文件
   const isSelected = selectedPath === node.path;
   return (
     <button
       onClick={() => onFileClick(node.path)}
       className={cn(
         'w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg transition-colors text-left',
-        isSelected
-          ? 'bg-primary/10 text-primary border border-primary/20'
-          : 'hover:bg-muted'
+        isSelected ? 'bg-primary/10 text-primary border border-primary/20' : 'hover:bg-muted'
       )}
       style={{ paddingLeft: `${level * 12 + 24}px` }}
     >
