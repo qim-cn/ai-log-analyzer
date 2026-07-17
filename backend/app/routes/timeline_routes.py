@@ -4,15 +4,20 @@ Timeline 路由定义
 日志时间线可视化 API
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.services.timeline_service import timeline_service
+from app.utils.auth import (
+    require_log_owner as _require_log_owner,
+    require_session_owner as _require_session_owner,
+)
 
 router = APIRouter()
 
 
 @router.get("/errors", response_model=dict)
 async def get_error_timeline(
+    request: Request,
     session_id: str,
     interval: str = "hour",
 ):
@@ -23,6 +28,7 @@ async def get_error_timeline(
         session_id: 会话 ID
         interval: 时间间隔 (minute, hour, day)
     """
+    _require_session_owner(session_id, request.state.user)
     result = timeline_service.get_error_timeline(session_id, interval)
     return {
         "code": 0,
@@ -33,6 +39,7 @@ async def get_error_timeline(
 
 @router.get("/context", response_model=dict)
 async def get_log_context(
+    request: Request,
     log_id: str,
     line_number: int,
     context_lines: int = 20,
@@ -45,6 +52,7 @@ async def get_log_context(
         line_number: 行号
         context_lines: 上下文行数
     """
+    _require_log_owner(log_id, request.state.user)
     result = timeline_service.get_log_context(log_id, line_number, context_lines)
     return {
         "code": 0,

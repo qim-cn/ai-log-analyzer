@@ -14,6 +14,7 @@ from app.models.user import UserRole
 from app.repositories.log_repository import log_repository
 from app.repositories.session_repository import session_repository
 from app.services.cluster_service import cluster_service
+from app.utils.auth import require_log_owner as _require_log_owner, require_session_owner as _require_session_owner
 from app.services.knowledge_graph import knowledge_graph
 from app.services.log_service import log_service
 from app.services.vector_store import vector_store
@@ -26,23 +27,6 @@ from app.types.log_types import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _require_session_owner(session_id: str, user) -> None:
-    """校验当前用户是否拥有会话访问/修改权限"""
-    session = session_repository.get_by_id(session_id)
-    if session is None:
-        raise ValidationError("会话不存在")
-    if user.role != UserRole.ADMIN and session.user_id is not None and session.user_id != user.id:
-        raise ValidationError("无权访问此会话")
-
-
-def _require_log_owner(log_id: str, user) -> None:
-    """校验当前用户是否拥有日志文件访问/修改权限"""
-    lf = log_repository.get_by_id(log_id)
-    if lf is None:
-        raise ValidationError("日志文件不存在")
-    _require_session_owner(lf.session_id, user)
 
 
 @router.post("/upload", response_model=dict)
@@ -217,6 +201,11 @@ async def find_similar_logs(log_id: str, request: Request, limit: int = 5):
         # 获取原始日志文件信息
         similar_file = log_repository.get_by_id(log["log_id"])
         if similar_file:
+            # 越权校验：仅返回当前用户有权访问的日志（管理员可见全部）
+            try:
+                _require_log_owner(log["log_id"], request.state.user)
+            except ValidationError:
+                continue
             # 获取解决方案（如果有的话）
             solution = None
             conn = get_connection()

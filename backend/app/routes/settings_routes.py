@@ -4,10 +4,12 @@ Settings 路由定义
 支持运行时切换 AI 配置，无需重启服务。
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.config.database import get_connection, mark_user_set, reset_user_settings
 from app.config.settings import settings
+from app.middlewares.error_handler import ValidationError
+from app.models.user import UserRole
 from app.services.ai_service import ai_service
 from app.types.settings_types import (
     AISettingsResponse,
@@ -18,6 +20,12 @@ from app.types.settings_types import (
 )
 
 router = APIRouter()
+
+
+def _require_admin(user) -> None:
+    """写配置类操作仅限管理员，防止普通用户篡改 base_url 触发 SSRF / 泄露 API key"""
+    if user.role != UserRole.ADMIN:
+        raise ValidationError("权限不足，仅管理员可操作")
 
 
 @router.get("/ai", response_model=dict)
@@ -40,8 +48,9 @@ async def get_ai_settings():
 
 
 @router.put("/ai", response_model=dict)
-async def update_ai_settings(body: UpdateAISettingsRequest):
-    """更新 AI 配置（运行时生效）"""
+async def update_ai_settings(body: UpdateAISettingsRequest, request: Request):
+    """更新 AI 配置（运行时生效，仅管理员）"""
+    _require_admin(request.state.user)
     conn = get_connection()
 
     updated_keys = []
@@ -108,8 +117,9 @@ async def update_ai_settings(body: UpdateAISettingsRequest):
 
 
 @router.post("/ai/reset", response_model=dict)
-async def reset_ai_settings():
-    """重置 AI 配置为环境变量默认值"""
+async def reset_ai_settings(request: Request):
+    """重置 AI 配置为环境变量默认值（仅管理员）"""
+    _require_admin(request.state.user)
     reset_user_settings()
 
     # 返回重置后的配置
@@ -154,15 +164,15 @@ async def list_models():
 
 
 @router.put("/model", response_model=dict)
-async def switch_model(body: dict):
+async def switch_model(body: dict, request: Request):
     """
-    切换当前使用的模型（运行时生效）
+    切换当前使用的模型（运行时生效，仅管理员）
 
     请求：{"model": "gpt-4o"}
     """
+    _require_admin(request.state.user)
     model = body.get("model")
     if not model:
-        from app.middlewares.error_handler import ValidationError
         raise ValidationError("模型名称不能为空")
 
     conn = get_connection()
@@ -206,8 +216,9 @@ async def get_embedding_settings():
 
 
 @router.put("/embedding", response_model=dict)
-async def update_embedding_settings(body: UpdateEmbeddingSettingsRequest):
-    """更新嵌入模型配置（运行时生效）"""
+async def update_embedding_settings(body: UpdateEmbeddingSettingsRequest, request: Request):
+    """更新嵌入模型配置（运行时生效，仅管理员）"""
+    _require_admin(request.state.user)
     conn = get_connection()
     updated_keys = []
 

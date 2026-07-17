@@ -4,17 +4,18 @@
 POST /api/logs/compare → 对比两份日志
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.middlewares.error_handler import ValidationError
 from app.services.compare_service import compare_service
+from app.utils.auth import require_log_owner as _require_log_owner
 from app.types.compare_types import CompareRequest, CompareResponse
 
 router = APIRouter()
 
 
 @router.post("/compare", response_model=dict)
-async def compare_logs(body: CompareRequest):
+async def compare_logs(body: CompareRequest, request: Request):
     """
     对比两份日志
 
@@ -26,6 +27,10 @@ async def compare_logs(body: CompareRequest):
 
     if body.log_id_1 == body.log_id_2:
         raise ValidationError("不能对比同一份日志")
+
+    # 归属校验：两份日志都必须属于当前用户（管理员放行）
+    _require_log_owner(body.log_id_1, request.state.user)
+    _require_log_owner(body.log_id_2, request.state.user)
 
     result = compare_service.compare_logs(body.log_id_1, body.log_id_2)
 

@@ -29,6 +29,7 @@ from app.services.local_analysis_service import try_local_analysis, feed_known_p
 from app.services.log_service import log_service
 from app.services.message_service import message_service
 from app.types.message_types import SendMessageRequest
+from app.utils.auth import require_session_owner as _require_session_owner
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,9 @@ async def send_message(body: SendMessageRequest, request: Request):
     """
     if not body.content.strip():
         raise ValidationError("消息内容不能为空")
+
+    # 归属校验：只能向自己拥有的会话发消息
+    _require_session_owner(body.session_id, request.state.user)
 
     # 1. 保存用户消息，并自动提取标题（首条消息）
     message_service.create_message(

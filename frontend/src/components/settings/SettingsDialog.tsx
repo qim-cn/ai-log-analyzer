@@ -28,10 +28,8 @@ function DirBrowser({ show, onClose, onSelect, btnLabel }: {
   const load = useCallback(async (relPath: string = '') => {
     setLoading(true); setError('');
     try {
-      const r = await fetch(`/api/obsidian/tree${relPath ? `?path=${encodeURIComponent(relPath)}` : ''}`);
-      const d = await r.json();
-      if (d.code === 0) setTree(d.data?.tree || []);
-      else setError(d.message || '加载失败');
+      const d = await obsidianService.getFileTree(relPath || undefined);
+      setTree(d.tree || []);
     } catch (err: any) { setError(err.message || '网络错误'); }
     finally { setLoading(false); }
   }, []);

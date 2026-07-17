@@ -274,9 +274,17 @@ async def list_resolved():
 @router.get("/resolved/file", response_model=dict)
 async def get_resolved_file(filename: str):
     """读取已解决记录的内容"""
-    rd = _resolved_dir()
-    file_path = (rd / filename).resolve()
-    if not str(file_path).startswith(str(rd.resolve())) or not file_path.exists():
+    rd = _resolved_dir().resolve()
+    try:
+        file_path = (rd / filename).resolve()
+    except OSError:
+        return {"code": 404, "message": "文件不存在", "data": None}
+    # 安全校验：解析后必须在 resolved 目录内（防止 ../ 穿越）
+    try:
+        file_path.relative_to(rd)
+    except ValueError:
+        return {"code": 404, "message": "文件不存在", "data": None}
+    if not file_path.exists() or not file_path.is_file():
         return {"code": 404, "message": "文件不存在", "data": None}
     content = file_path.read_text(encoding="utf-8")
     return {"code": 0, "message": "success", "data": {"filename": filename, "content": content}}
@@ -288,9 +296,16 @@ async def delete_resolved_file(filename: str, request: Request):
     user = request.state.user
     if user.role != UserRole.ADMIN:
         return {"code": 403, "message": "权限不足，仅管理员可操作", "data": None}
-    rd = _resolved_dir()
-    file_path = (rd / filename).resolve()
-    if not str(file_path).startswith(str(rd.resolve())) or not file_path.exists():
+    rd = _resolved_dir().resolve()
+    try:
+        file_path = (rd / filename).resolve()
+    except OSError:
+        return {"code": 404, "message": "文件不存在", "data": None}
+    try:
+        file_path.relative_to(rd)
+    except ValueError:
+        return {"code": 404, "message": "文件不存在", "data": None}
+    if not file_path.exists() or not file_path.is_file():
         return {"code": 404, "message": "文件不存在", "data": None}
     try:
         file_path.unlink()

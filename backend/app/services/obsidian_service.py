@@ -53,6 +53,15 @@ def _get_settings() -> dict:
     }
 
 
+def _is_within(path: Path, base: Path) -> bool:
+    """判断 path 是否位于 base 目录内（含 base 自身），防止路径穿越。"""
+    try:
+        path.relative_to(base)
+    except ValueError:
+        return False
+    return True
+
+
 def _make_webdav_url(base_url: str, path: str) -> str:
     """构建 WebDAV URL"""
     base = base_url.rstrip("/")
@@ -309,7 +318,21 @@ class ObsidianService:
     def _local_get_file_tree(self, path: str = "") -> list[dict]:
         """从本地文件系统获取文件树"""
         vault_dir = self._get_local_vault_dir()
-        target_dir = vault_dir / path.strip("/") if path else vault_dir
+        vault_root = vault_dir.resolve()
+
+        # 安全校验：拒绝穿越
+        if path and ".." in Path(path).parts:
+            logger.warning(f"拒绝越界路径访问: {path}")
+            return []
+
+        target_dir = (vault_dir / path.strip("/")) if path else vault_dir
+        try:
+            target_dir = target_dir.resolve()
+        except OSError:
+            return []
+        if not _is_within(target_dir, vault_root):
+            logger.warning(f"拒绝越界目录访问: {path} -> {target_dir}")
+            return []
 
         if not target_dir.exists() or not target_dir.is_dir():
             logger.warning(f"Local vault directory not found: {target_dir}")
@@ -358,30 +381,29 @@ class ObsidianService:
     def _local_get_file_content(self, path: str) -> Optional[str]:
         """从本地文件系统读取文件内容"""
         vault_dir = self._get_local_vault_dir()
+        vault_root = vault_dir.resolve()
 
-        # 处理路径：移除可能的 vault_path 前缀重复
         clean_path = path
-        vault_path_str = str(vault_dir).replace("\\", "/")
+        # 安全校验：绝对路径与 .. 段一律禁止，防止读取 vault 外文件
+        if clean_path.startswith("/") or ".." in Path(clean_path).parts:
+            logger.warning(f"拒绝越界路径访问: {path}")
+            return None
 
-        # 尝试多种路径组合
-        candidates = [
-            vault_dir / clean_path,
-            vault_dir.parent / clean_path,  # 如果 path 包含 vault 名
-        ]
-
-        # 如果 path 是绝对路径（从根开始的），也尝试
-        if clean_path.startswith("/"):
-            candidates.insert(0, Path(clean_path))
+        # 只允许在 vault 目录内查找
+        candidates = [vault_dir / clean_path]
 
         for file_path in candidates:
             try:
                 resolved = file_path.resolve()
+                if not _is_within(resolved, vault_root):
+                    logger.warning(f"拒绝越界文件访问: {path} -> {resolved}")
+                    continue
                 if resolved.exists() and resolved.is_file():
                     return resolved.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError, PermissionError):
                 continue
 
-        logger.warning(f"Local file not found: {path}, tried: {[str(c) for c in candidates]}")
+        logger.warning(f"Local file not found: {path}")
         return None
 
     def _local_list_notes(self) -> list[dict]:
@@ -691,6 +713,10 @@ updated: {datetime.utcnow().isoformat()}Z
 
     async def _get_file_tree_webdav(self, path: str = "") -> list[dict]:
         """通过 WebDAV 获取文件树（从 Vault 根目录开始浏览）"""
+        # 安全校验：禁止穿越到 vault 之外
+        if path and any(part == ".." for part in path.split("/")):
+            logger.warning(f"拒绝越界 WebDAV 路径: {path}")
+            return []
         config = _get_settings()
         auth = _webdav_auth(config["webdav_user"], config["webdav_pass"])
         base_url = config["webdav_url"].rstrip("/")
@@ -744,6 +770,10 @@ updated: {datetime.utcnow().isoformat()}Z
         base_url = config["webdav_url"].rstrip("/")
         # path 去掉可能的 Obsidian Vault/ 前缀
         clean = unquote(path).lstrip("/")
+        # 安全校验：禁止穿越到 vault 之外
+        if any(part == ".." for part in clean.split("/")):
+            logger.warning(f"拒绝越界 WebDAV 路径: {path}")
+            return None
         bp = self._base_path + "/" if getattr(self, "_base_path", "") else ""
         clean = clean.removeprefix(bp) if bp else clean
         return await _webdav_get(_make_webdav_url(base_url, clean), auth)

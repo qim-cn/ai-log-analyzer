@@ -35,9 +35,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if any(path.startswith(prefix) for prefix in PUBLIC_PATH_PREFIXES):
             return await call_next(request)
 
-        # 公开 GET 端点（无需登录）
+        # 公开 GET 端点（无需登录）：仅 Linux 知识库与批量风险评分。
+        # Obsidian 相关端点一律需要登录，防止未授权读取知识库 / 路径穿越。
         if request.method == "GET":
-            if path.startswith(("/api/knowledge/linux", "/api/knowledge/batch-risk", "/api/obsidian/resolved", "/api/obsidian/tree", "/api/obsidian/file", "/api/obsidian/notes", "/api/obsidian/search", "/api/obsidian/browse-paths")):
+            if path.startswith(("/api/knowledge/linux", "/api/knowledge/batch-risk")):
                 return await call_next(request)
 
         # OPTIONS 请求不需要认证
