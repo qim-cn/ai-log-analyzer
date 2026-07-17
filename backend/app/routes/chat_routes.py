@@ -55,42 +55,12 @@ async def send_message(body: SendMessageRequest, request: Request):
     # 归属校验：只能向自己拥有的会话发消息
     _require_session_owner(body.session_id, request.state.user)
 
-    # 1. 保存用户消息，并自动提取标题（首条消息）
+    # 1. 保存用户消息
     message_service.create_message(
         session_id=body.session_id,
         role=MessageRole.USER,
         content=body.content,
     )
-    try:
-        from app.services.session_service import session_service as _ss
-        sess = _ss.get_session(body.session_id)
-        if sess and sess.title in ("新对话", ""):
-            # 提取故障标题：本地分析命中时用故障类型，否则取消息关键词
-            title = ""
-            if local_result:
-                # 从本地分析结果中提取故障类型
-                fault_match = re.search(r'### \d+\. (.+)', local_result)
-                if fault_match:
-                    title = fault_match.group(1)
-            if not title:
-                # fallback：取日志/消息中的关键故障词
-                combined = f"{body.content} {log_snippet}"
-                key_patterns = [
-                    r'PCIe链路降宽', r'PCIe链路降速', r'HBA.*超时', r'SAS链路错误',
-                    r'内存故障', r'CPU过热', r'SMART异常', r'网卡.*故障',
-                    r'电源.*故障', r'风扇故障',
-                ]
-                for p in key_patterns:
-                    m = re.search(p, combined, re.IGNORECASE)
-                    if m:
-                        title = m.group(0)
-                        break
-            if not title:
-                title = body.content.strip().replace("\n", " ")[:20]
-            if title:
-                _ss.update_title(body.session_id, f"确认中 - {title}")
-    except Exception:
-        pass
 
     # 2. 获取日志摘要
     log_summary = log_service.get_logs_summary_for_session(body.session_id)
@@ -111,6 +81,39 @@ async def send_message(body: SendMessageRequest, request: Request):
     if local_result:
         source_tag = local_source
         logger.info(f"本地分析命中，跳过 AI 调用")
+
+    # 3.5 提取会话标题（首条消息）
+    # 依赖 log_snippet（步骤 2）和 local_result（步骤 3），必须置于二者之后；
+    # 此前该块在这两个变量定义之前执行，必然抛 NameError 被 except 吞掉，标题永不更新。
+    try:
+        from app.services.session_service import session_service as _ss
+        sess = _ss.get_session(body.session_id)
+        if sess and sess.title in ("新对话", ""):
+            title = ""
+            # 本地分析命中时用故障类型做标题
+            if local_result:
+                fault_match = re.search(r'### \d+\. (.+)', local_result)
+                if fault_match:
+                    title = fault_match.group(1)
+            if not title:
+                # fallback：取日志/消息中的关键故障词
+                combined = f"{body.content} {log_snippet}"
+                key_patterns = [
+                    r'PCIe链路降宽', r'PCIe链路降速', r'HBA.*超时', r'SAS链路错误',
+                    r'内存故障', r'CPU过热', r'SMART异常', r'网卡.*故障',
+                    r'电源.*故障', r'风扇故障',
+                ]
+                for p in key_patterns:
+                    m = re.search(p, combined, re.IGNORECASE)
+                    if m:
+                        title = m.group(0)
+                        break
+            if not title:
+                title = body.content.strip().replace("\n", " ")[:20]
+            if title:
+                _ss.update_title(body.session_id, f"确认中 - {title}")
+    except Exception as e:
+        logger.debug(f"标题提取失败: {e}")
 
     # 4. 智能知识反哺：搜索知识库注入历史案例
     knowledge_context = ""
@@ -221,7 +224,7 @@ async def send_message(body: SendMessageRequest, request: Request):
 
         except Exception as e:
             logger.exception(f"流式响应异常: {e}")
-            error_msg = f"分析异常: {str(e)}"
+            error_msg = "分析服务异常，请稍后重试"
             message_service.create_message(
                 session_id=body.session_id,
                 role=MessageRole.ASSISTANT,

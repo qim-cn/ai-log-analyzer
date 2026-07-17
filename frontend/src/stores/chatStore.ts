@@ -7,6 +7,9 @@ import type { Message } from '@/types';
 import { messageService, sendMessage } from '@/services';
 import { useSessionStore } from './sessionStore';
 
+// 当前流式请求的 AbortController；切会话/重发时 abort 旧的，避免旧 chunk 写入造成串台
+let streamController: AbortController | null = null;
+
 interface ChatState {
   messages: Message[];
   loading: boolean;
@@ -22,6 +25,7 @@ interface ChatState {
   regenerate: (sessionId: string) => Promise<void>;
   clearMessages: () => void;
   setInputQuote: (quote: string) => void;
+  abortStreaming: () => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -60,11 +64,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
       thinkingMessage: '正在分析...',
     }));
 
+    // 取消上一次未完成的流式请求，避免切换会话/重发时旧 chunk 串台
+    if (streamController) streamController.abort();
+    streamController = new AbortController();
+    const signal = streamController.signal;
+
     try {
       let fullContent = '';
       let hasStartedContent = false;
 
-      for await (const chunk of sendMessage(sessionId, content)) {
+      for await (const chunk of sendMessage(sessionId, content, signal)) {
         if (chunk.error) throw new Error(chunk.error);
 
         if (chunk.status === 'thinking') {
@@ -107,7 +116,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         thinkingMessage: '',
       }));
     } catch (error) {
+      // 主动取消（切会话/重发）不算错误，静默清理即可
+      const aborted = (error as { name?: string })?.name === 'AbortError';
       set({ streaming: false, streamingContent: '', thinking: false, thinkingMessage: '' });
+      if (aborted) return;
       throw error;
     }
   },
@@ -134,5 +146,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setInputQuote: (quote) => {
     set({ inputQuote: quote });
+  },
+
+  abortStreaming: () => {
+    if (streamController) {
+      streamController.abort();
+      streamController = null;
+    }
+    set({ streaming: false, streamingContent: '', thinking: false, thinkingMessage: '' });
   },
 }));

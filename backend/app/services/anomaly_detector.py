@@ -10,7 +10,7 @@ Anomaly Detector - 日志异常检测
 
 import logging
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List
 
 import numpy as np
 from sklearn.ensemble import IsolationForest
@@ -26,9 +26,9 @@ class AnomalyDetector:
     """异常检测器"""
 
     def __init__(self):
-        self._scaler = StandardScaler()
-        self._isolation_forest: Optional[IsolationForest] = None
-        self._lof: Optional[LocalOutlierFactor] = None
+        # 不持有实例级可变状态：StandardScaler / 模型均为每次调用局部对象，
+        # 避免单例在并发请求下被互相污染（fit_transform 会改写内部状态）。
+        pass
 
     def detect_with_zscore(
         self, values: List[float], threshold: float = 3.0
@@ -123,17 +123,18 @@ class AnomalyDetector:
 
         X = np.array(features)
 
-        # 标准化
-        X_scaled = self._scaler.fit_transform(X)
+        # 标准化（局部对象，避免并发污染单例状态）
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
 
         # 训练模型
-        self._isolation_forest = IsolationForest(
+        model = IsolationForest(
             contamination=contamination,
             random_state=42,
             n_estimators=100,
         )
-        predictions = self._isolation_forest.fit_predict(X_scaled)
-        scores = self._isolation_forest.decision_function(X_scaled)
+        predictions = model.fit_predict(X_scaled)
+        scores = model.decision_function(X_scaled)
 
         results = []
         for i, (pred, score) in enumerate(zip(predictions, scores)):
@@ -167,16 +168,17 @@ class AnomalyDetector:
 
         X = np.array(features)
 
-        # 标准化
-        X_scaled = self._scaler.fit_transform(X)
+        # 标准化（局部对象，避免并发污染单例状态）
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
 
         # LOF 检测
-        self._lof = LocalOutlierFactor(
+        model = LocalOutlierFactor(
             n_neighbors=n_neighbors,
             contamination=contamination,
         )
-        predictions = self._lof.fit_predict(X_scaled)
-        scores = self._lof.negative_outlier_factor_
+        predictions = model.fit_predict(X_scaled)
+        scores = model.negative_outlier_factor_
 
         results = []
         for i, (pred, score) in enumerate(zip(predictions, scores)):

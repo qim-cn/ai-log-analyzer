@@ -1,6 +1,6 @@
 /**
  * 统一 HTTP 客户端
- * 自动携带 JWT token，401 时跳转登录页
+ * 鉴权由 httpOnly cookie 自动携带（credentials: 'include'），401 时跳转登录页
  */
 
 const BASE_URL = '/api';
@@ -11,12 +11,9 @@ interface ApiResponse<T = unknown> {
   data: T;
 }
 
-function getToken(): string | null {
-  return localStorage.getItem('token');
-}
-
 function clearAuth() {
-  localStorage.removeItem('token');
+  // token 由 httpOnly cookie 管理，JS 无法读取/清除；这里只清理本地用户信息。
+  // cookie 由 /auth/logout 端点删除，或在下次登录时被覆盖。
   localStorage.removeItem('user');
 }
 
@@ -29,25 +26,19 @@ async function request<T>(
   options: RequestOptions = {}
 ): Promise<T> {
   const url = `${BASE_URL}${path}`;
-  const token = getToken();
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   };
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
   const body = options.body ? JSON.stringify(options.body) : undefined;
-
-  console.log('[http.request]', options.method || 'GET', url, options.body || null);
 
   const response = await fetch(url, {
     ...options,
     headers,
     body,
+    credentials: 'include',
   });
 
   // 401 → 清除 token，跳转登录
@@ -95,23 +86,21 @@ export const http = {
    */
   stream: async function* (
     path: string,
-    body: unknown
+    body: unknown,
+    signal?: AbortSignal
   ): AsyncGenerator<{ content?: string; done?: boolean; error?: string; status?: string; message?: string }> {
     const url = `${BASE_URL}${path}`;
-    const token = getToken();
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
 
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
+      signal,
+      credentials: 'include',
     });
 
     if (response.status === 401) {
@@ -130,33 +119,38 @@ export const http = {
     const decoder = new TextDecoder();
     let buffer = '';
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(line.slice(6));
-            yield data;
-          } catch {
-            // skip invalid JSON
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              yield data;
+            } catch {
+              // skip invalid JSON
+            }
           }
         }
       }
-    }
 
-    if (buffer.startsWith('data: ')) {
-      try {
-        const data = JSON.parse(buffer.slice(6));
-        yield data;
-      } catch {
-        // skip
+      if (buffer.startsWith('data: ')) {
+        try {
+          const data = JSON.parse(buffer.slice(6));
+          yield data;
+        } catch {
+          // skip
+        }
       }
+    } finally {
+      // 正常结束或被 AbortController.abort() 取消时，释放底层 reader
+      try { await reader.cancel(); } catch { /* 已释放 */ }
     }
   },
 };
@@ -174,19 +168,16 @@ export async function uploadFile<T>(
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   }
 
-  const token = getToken();
   const formData = new FormData();
   formData.append('file', file);
 
   const headers: Record<string, string> = {};
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
   const response = await fetch(url.toString(), {
     method: 'POST',
     headers,
     body: formData,
+    credentials: 'include',
   });
 
   if (response.status === 401) {

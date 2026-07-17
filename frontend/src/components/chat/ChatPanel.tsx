@@ -29,6 +29,7 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
     fetchMessages,
     sendMessage,
     clearMessages,
+    abortStreaming,
   } = useChatStore();
 
   const { logFiles, fetchLogs, uploadLog, uploading } = useLogStore();
@@ -46,10 +47,12 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
   const [showCompare, setShowCompare] = useState(false);
 
   useEffect(() => {
+    // 切换会话时取消上一个会话仍在进行的流式回复，避免旧 chunk 串到新会话
+    abortStreaming();
     clearMessages();
     fetchMessages(sessionId);
     fetchLogs(sessionId);
-  }, [sessionId, fetchMessages, clearMessages, fetchLogs]);
+  }, [sessionId, fetchMessages, clearMessages, fetchLogs, abortStreaming]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

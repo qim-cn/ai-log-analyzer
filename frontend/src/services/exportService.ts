@@ -7,9 +7,8 @@ const BASE_URL = '/api';
 export const exportService = {
   /** 导出为 Markdown */
   exportMarkdown: async (sessionId: string) => {
-    const token = localStorage.getItem('token');
     const response = await fetch(`${BASE_URL}/sessions/${sessionId}/export?format=markdown`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     });
 
     if (!response.ok) throw new Error('导出失败');
@@ -25,9 +24,8 @@ export const exportService = {
 
   /** 导出为 PDF */
   exportPdf: async (sessionId: string) => {
-    const token = localStorage.getItem('token');
     const response = await fetch(`${BASE_URL}/sessions/${sessionId}/export?format=pdf`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     });
 
     if (!response.ok) throw new Error('导出失败');

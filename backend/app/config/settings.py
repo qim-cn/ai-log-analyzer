@@ -82,6 +82,21 @@ class Settings:
         ]
     )
 
+    # 受信任的反向代理 IP（逗号分隔）。
+    # 仅当直连 peer 在此列表时才信任 X-Forwarded-For / X-Real-IP，
+    # 防止客户端伪造代理头绕过限流。为空则回退到 request.client.host。
+    trusted_proxies: list[str] = field(
+        default_factory=lambda: [
+            ip.strip() for ip in os.getenv("TRUSTED_PROXIES", "").split(",") if ip.strip()
+        ]
+    )
+
+    # JWT cookie 安全开关：True 时设置 Secure 属性（仅 HTTPS 传输）。
+    # 本地 http 开发置 False；生产（HTTPS）置 True。
+    cookie_secure: bool = field(
+        default_factory=lambda: os.getenv("COOKIE_SECURE", "false").strip().lower() in ("1", "true", "yes")
+    )
+
     # 日志存储路径
     log_storage_path: str = "/data/logs"
 

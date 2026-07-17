@@ -33,8 +33,7 @@ class UserResponse(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    """登录响应"""
-    token: str
+    """登录响应（token 经 httpOnly cookie 下发，不再放响应体，防 XSS 读取）"""
     user: UserResponse
 
 

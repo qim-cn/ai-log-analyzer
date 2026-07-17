@@ -10,8 +10,9 @@
  * - 时间范围筛选
  */
 
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useRef } from 'react';
 import { X, Search, Filter } from 'lucide-react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { cn } from '@/utils';
 
 interface LogViewerProps {
@@ -61,6 +62,15 @@ export function LogViewer({
         return true;
       });
   }, [lines, levelFilter, searchQuery, searchRegex]);
+
+  // 虚拟化：只渲染可视区内的行，避免大日志（数万行）一次性渲染导致卡死/崩溃
+  const parentRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: filteredLines.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 20,
+    overscan: 12,
+  });
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -147,18 +157,45 @@ export function LogViewer({
       </div>
 
       {/* 内容 */}
-      <div className="flex-1 overflow-auto p-2 font-mono text-xs leading-5" onContextMenu={handleContextMenu}>
+      <div
+        ref={parentRef}
+        className="flex-1 overflow-auto p-2 font-mono text-xs leading-5"
+        onContextMenu={handleContextMenu}
+      >
         {filteredLines.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">无匹配内容</div>
         ) : (
-          filteredLines.map(({ line, index }) => (
-            <LogLine
-              key={index}
-              line={line}
-              lineNumber={index + 1}
-              onClick={onLineClick}
-            />
-          ))
+          <div
+            style={{
+              height: virtualizer.getTotalSize(),
+              position: 'relative',
+              width: '100%',
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualItem) => {
+              const { line, index } = filteredLines[virtualItem.index];
+              return (
+                <div
+                  key={virtualItem.key}
+                  data-index={virtualItem.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualItem.start}px)`,
+                  }}
+                >
+                  <LogLine
+                    line={line}
+                    lineNumber={index + 1}
+                    onClick={onLineClick}
+                  />
+                </div>
+              );
+            })}
+          </div>
         )}
 
         {/* 右键菜单 */}

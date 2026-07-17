@@ -17,9 +17,7 @@ export const knowledgeService = {
   /** 获取知识图谱可视化 HTML（返回原始 HTML） */
   getGraph: async (): Promise<string> => {
     const response = await fetch('/api/knowledge/graph?format=html', {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
+      credentials: 'include',
     });
     if (!response.ok) {
       throw new Error('Failed to fetch knowledge graph');

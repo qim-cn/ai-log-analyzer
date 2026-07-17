@@ -28,8 +28,8 @@ interface CategoryCount {
 const API_BASE = '/api/knowledge/linux';
 
 function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+  // 鉴权由 httpOnly cookie 自动携带（fetch 带 credentials: 'include'），无需手拼 Authorization
+  return { 'Content-Type': 'application/json' };
 }
 
 const categoryColors: Record<string, string> = {
@@ -130,11 +130,11 @@ export function LinuxKnowledgePanel() {
     try {
       if (editingId) {
         await fetch(`${API_BASE}/entry/${editingId}`, {
-          method: 'PUT', headers: authHeaders(), body: JSON.stringify(form),
+          method: 'PUT', headers: authHeaders(), body: JSON.stringify(form), credentials: 'include',
         });
       } else {
         await fetch(`${API_BASE}/entry`, {
-          method: 'POST', headers: authHeaders(), body: JSON.stringify(form),
+          method: 'POST', headers: authHeaders(), body: JSON.stringify(form), credentials: 'include',
         });
       }
       setShowForm(false);
@@ -149,15 +149,15 @@ export function LinuxKnowledgePanel() {
   const handleDelete = async (id: number) => {
     if (!confirm('确定删除这条命令？')) return;
     try {
-      await fetch(`${API_BASE}/entry/${id}`, { method: 'DELETE', headers: authHeaders() });
+      await fetch(`${API_BASE}/entry/${id}`, { method: 'DELETE', headers: authHeaders(), credentials: 'include' });
       loadCategories();
       doSearch();
       if (expandedId === id) setExpandedId(null);
     } catch (err) { console.error(err); }
   };
 
-  // 判断登录状态
-  const hasToken = !!localStorage.getItem('token');
+  // 判断登录状态（token 在 httpOnly cookie 里读不到，用本地 user 信息作登录态指示）
+  const hasToken = !!localStorage.getItem('user');
 
   return (
     <div className="h-full flex flex-col bg-card">

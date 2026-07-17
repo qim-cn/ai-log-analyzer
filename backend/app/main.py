@@ -24,6 +24,7 @@ from app.middlewares.auth_middleware import AuthMiddleware
 from app.middlewares.error_handler import register_error_handlers
 from app.services.prometheus_service import prometheus_service
 from app.services.rate_limiter import RateLimiterFactory
+from app.utils.request import get_client_ip
 
 # 配置日志
 logging.basicConfig(
@@ -129,7 +130,7 @@ app.add_middleware(AuthMiddleware)
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     """请求限流 + 请求日志"""
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
 
     if request.url.path == "/api/health":
         return await call_next(request)

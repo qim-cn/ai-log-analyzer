@@ -44,12 +44,41 @@ async def upload_log(session_id: str, file: UploadFile, request: Request):
     # 会话所有权校验
     _require_session_owner(session_id, request.state.user)
 
-    content = await file.read()
-    log_file = log_service.upload_log(
-        session_id=session_id,
-        filename=file.filename or "unknown.log",
-        content=content,
-    )
+    # 前置大小校验：避免把超大文件全量读进内存后再校验（DoS）。
+    # 优先用 UploadFile.size，回退 Content-Length；二者都拿不到时走流式按累计字节拦截。
+    MAX_SIZE = log_service.MAX_FILE_SIZE
+    declared = getattr(file, "size", None) or int(request.headers.get("content-length", 0) or 0)
+    if declared and declared > MAX_SIZE:
+        raise ValidationError(f"文件大小超过限制 (最大 50MB)")
+
+    SMALL_THRESHOLD = 1024 * 1024  # 1MB
+    if declared and declared <= SMALL_THRESHOLD:
+        # 小文件：读入内存存 DB（保留 content 字段，供本地分析/标题提取使用）
+        content = await file.read()
+        log_file = log_service.upload_log(
+            session_id=session_id,
+            filename=file.filename or "unknown.log",
+            content=content,
+        )
+    else:
+        # 大文件或大小未知：流式写盘，分块读取不占内存
+        async def _iter_chunks(chunk_size: int = 1024 * 1024):
+            total = 0
+            while True:
+                chunk = await file.read(chunk_size)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_SIZE:
+                    raise ValidationError(f"文件大小超过限制 (最大 50MB)")
+                yield chunk
+
+        log_file = await log_service.upload_log_streaming(
+            session_id=session_id,
+            filename=file.filename or "unknown.log",
+            file_iterator=_iter_chunks(),
+            file_size=declared,
+        )
 
     # 异步生成嵌入向量和提取知识图谱实体（不阻塞响应）
     try:

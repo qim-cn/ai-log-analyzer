@@ -10,12 +10,15 @@ GET  /api/auth/me    → 获取当前用户信息
 import logging
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
+from app.config.settings import settings
 from app.middlewares.error_handler import ValidationError
 from app.models.user import UserRole
 from app.repositories.user_repository import user_repository
 from app.services.auth_service import auth_service
 from app.types.auth_types import LoginRequest, LoginResponse, ResetPasswordRequest, SetupRequest, UserResponse
+from app.utils.request import get_client_ip
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -27,10 +30,11 @@ async def login(request: Request, body: LoginRequest):
     用户登录
 
     请求：{"username": "xxx", "password": "xxx"}
-    响应：{"code": 0, "data": {"token": "xxx", "user": {...}}}
+    响应：{"code": 0, "data": {"user": {...}}}
+    token 经 httpOnly cookie 下发（Set-Cookie），不在响应体中出现。
     """
     # 调试日志：记录请求来源和 body 摘要
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     logger.info(f"登录请求 from {client_ip}: username={body.username!r}")
 
     try:
@@ -45,14 +49,41 @@ async def login(request: Request, body: LoginRequest):
     from app.services.audit_service import audit_service
     audit_service.log(user_id=result.user.id, username=result.user.username, action="login")
 
-    return {
-        "code": 0,
-        "message": "登录成功",
-        "data": LoginResponse(
-            token=result.token,
-            user=UserResponse(**result.user.to_safe_dict()),
-        ),
-    }
+    # token 通过 httpOnly cookie 下发，不再放入响应体（防 XSS 读取 localStorage）
+    response = JSONResponse(
+        status_code=200,
+        content={
+            "code": 0,
+            "message": "登录成功",
+            "data": LoginResponse(
+                user=UserResponse(**result.user.to_safe_dict()),
+            ).model_dump(),
+        },
+    )
+    response.set_cookie(
+        key="token",
+        value=result.token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@router.post("/logout", response_model=dict)
+async def logout():
+    """
+    登出：清除 token cookie
+
+    无需鉴权即可调用（cookie 已过期时也能清除）。
+    """
+    response = JSONResponse(
+        status_code=200,
+        content={"code": 0, "message": "已登出", "data": None},
+    )
+    response.delete_cookie(key="token", path="/")
+    return response
 
 
 @router.get("/setup")
@@ -77,7 +108,7 @@ async def setup(request: Request, body: SetupRequest):
 
     仅当用户表为空时才允许调用。
     """
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     logger.info(f"首次设置管理员请求 from {client_ip}: username={body.username!r}")
 
     if user_repository.count() > 0:

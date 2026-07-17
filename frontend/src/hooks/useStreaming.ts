@@ -23,7 +23,6 @@ export function useStreaming() {
       let retries = 0;
 
       const doStream = async () => {
-        const token = localStorage.getItem('token');
         const controller = new AbortController();
         abortRef.current = controller;
 
@@ -32,14 +31,13 @@ export function useStreaming() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify(body),
             signal: controller.signal,
+            credentials: 'include',
           });
 
           if (response.status === 401) {
-            localStorage.removeItem('token');
             localStorage.removeItem('user');
             window.location.href = '/login';
             return;

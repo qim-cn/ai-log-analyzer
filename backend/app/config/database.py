@@ -2,37 +2,45 @@
 SQLite 数据库连接管理
 
 - WAL 模式提升并发性能
-- 连接池单例
+- 线程局部连接：每个线程独立持有连接，避免多请求共享同一连接导致的 cursor/事务互相污染
 """
 
 import sqlite3
+import threading
 from pathlib import Path
 
 from app.config.settings import settings
 
-_connection: sqlite3.Connection | None = None
+# 线程局部存储：每个线程拥有自己的 sqlite3 连接。
+# 注意：async 路由内的同步 sqlite3 调用仍会短时阻塞事件循环，但不再破坏正确性；
+# 彻底把同步 DB I/O 卸载到线程池留作后续工作。
+_local = threading.local()
+
+
+def _create_connection() -> sqlite3.Connection:
+    """创建一个新的数据库连接并应用 PRAGMA"""
+    db_path = Path(settings.database_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+
+    # WAL 模式：提升并发读写性能（数据库级持久设置，重复设置无副作用）
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA cache_size=-64000")  # 64MB 缓存
+
+    return conn
 
 
 def get_connection() -> sqlite3.Connection:
-    """获取数据库连接（单例）"""
-    global _connection
-    if _connection is None:
-        db_path = Path(settings.database_path)
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-
-        _connection = sqlite3.connect(
-            str(db_path),
-            check_same_thread=False,
-        )
-        _connection.row_factory = sqlite3.Row
-
-        # WAL 模式：提升并发读写性能
-        _connection.execute("PRAGMA journal_mode=WAL")
-        _connection.execute("PRAGMA synchronous=NORMAL")
-        _connection.execute("PRAGMA foreign_keys=ON")
-        _connection.execute("PRAGMA cache_size=-64000")  # 64MB 缓存
-
-    return _connection
+    """获取当前线程的数据库连接（线程局部单例）"""
+    conn = getattr(_local, "connection", None)
+    if conn is None:
+        conn = _create_connection()
+        _local.connection = conn
+    return conn
 
 
 def init_database() -> None:
@@ -224,8 +232,11 @@ def reset_user_settings() -> None:
 
 
 def close_database() -> None:
-    """关闭数据库连接"""
-    global _connection
-    if _connection is not None:
-        _connection.close()
-        _connection = None
+    """关闭当前线程的数据库连接。
+
+    线程局部连接下，仅关闭调用线程持有的连接；其它线程的连接随线程退出而回收。
+    """
+    conn = getattr(_local, "connection", None)
+    if conn is not None:
+        conn.close()
+        _local.connection = None
