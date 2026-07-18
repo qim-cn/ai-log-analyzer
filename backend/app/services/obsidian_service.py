@@ -20,6 +20,7 @@ from urllib.parse import unquote
 import httpx
 
 from app.config.database import get_connection
+from app.middlewares.error_handler import AppError
 
 logger = logging.getLogger(__name__)
 
@@ -122,44 +123,49 @@ async def _webdav_get(url: str, auth: httpx.BasicAuth | None) -> Optional[str]:
 
 
 async def _webdav_list(url: str, auth: httpx.BasicAuth | None) -> list[dict]:
-    """列出 WebDAV 目录内容"""
-    try:
-        headers = {"Depth": "1"}
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.request("PROPFIND", url, headers=headers, auth=auth)
-            if resp.status_code != 207:
-                return []
+    """列出 WebDAV 目录内容。
 
-            items = []
-            text = resp.text
+    失败时抛出 AppError（带可读消息），以便上层区分"连接/认证失败"与"目录为空"，
+    不再静默返回 [] 导致前端误显示 "No notes"。
+    """
+    headers = {"Depth": "1"}
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.request("PROPFIND", url, headers=headers, auth=auth)
 
-            # 解析 XML 响应 - 支持 D: 和 d: 前缀
-            href_pattern = re.compile(r"<(?:d:|D:)href>([^<]+)</(?:d:|D:)href>")
-            collection_pattern = re.compile(r"<(?:d:|D:)collection\b[^>]*/>")
-            response_pattern = re.compile(r"<(?:d:|D:)response>(.*?)</(?:d:|D:)response>", re.DOTALL)
+    if resp.status_code == 401:
+        raise AppError("Obsidian WebDAV 认证失败，请在设置中检查用户名/密码")
+    if resp.status_code == 404:
+        raise AppError("Obsidian WebDAV 仓库路径不存在，请检查路径配置")
+    if resp.status_code != 207:
+        raise AppError(f"Obsidian WebDAV 返回异常状态 {resp.status_code}")
 
-            responses = response_pattern.findall(text)
+    items = []
+    text = resp.text
 
-            for resp_text in responses:
-                href_match = href_pattern.search(resp_text)
-                if not href_match:
-                    continue
+    # 解析 XML 响应 - 支持 D: 和 d: 前缀
+    href_pattern = re.compile(r"<(?:d:|D:)href>([^<]+)</(?:d:|D:)href>")
+    collection_pattern = re.compile(r"<(?:d:|D:)collection\b[^>]*/>")
+    response_pattern = re.compile(r"<(?:d:|D:)response>(.*?)</(?:d:|D:)response>", re.DOTALL)
 
-                href = href_match.group(1)
-                name = unquote(href.rstrip("/").split("/")[-1])
+    responses = response_pattern.findall(text)
 
-                is_collection = bool(collection_pattern.search(resp_text))
+    for resp_text in responses:
+        href_match = href_pattern.search(resp_text)
+        if not href_match:
+            continue
 
-                items.append({
-                    "name": name,
-                    "href": href,
-                    "is_collection": is_collection,
-                })
+        href = href_match.group(1)
+        name = unquote(href.rstrip("/").split("/")[-1])
 
-            return items
-    except Exception as e:
-        logger.error(f"WebDAV LIST failed: {e}")
-        return []
+        is_collection = bool(collection_pattern.search(resp_text))
+
+        items.append({
+            "name": name,
+            "href": href,
+            "is_collection": is_collection,
+        })
+
+    return items
 
 
 def _sanitize_filename(title: str) -> str:
@@ -671,7 +677,13 @@ updated: {datetime.utcnow().isoformat()}Z
         vault_path = config["vault_path"].strip("/")
 
         dir_url = _make_webdav_url(base_url, vault_path)
-        items = await _webdav_list(dir_url, auth)
+        try:
+            items = await _webdav_list(dir_url, auth)
+        except AppError:
+            raise
+        except Exception as e:
+            logger.error(f"列出笔记失败 (WebDAV 网络异常): {e}")
+            raise AppError("Obsidian 知识库连接失败，请检查 WebDAV 服务是否可达")
 
         notes = []
         for item in items:
@@ -731,7 +743,12 @@ updated: {datetime.utcnow().isoformat()}Z
 
     async def _list_dir(self, auth, dir_url, depth: int = 0):
         """列出目录内容。depth=0 时只列一层（不递归），提升性能"""
-        items = await _webdav_list(dir_url, auth)
+        try:
+            items = await _webdav_list(dir_url, auth)
+        except Exception as e:
+            # 文件树浏览容忍单目录失败，静默返回空（错误已在 _webdav_list/上层记录）
+            logger.error(f"WebDAV 列目录失败: {e}")
+            return []
         from urllib.parse import urlparse
         cur = urlparse(dir_url).path.rstrip("/")
 

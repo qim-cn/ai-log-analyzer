@@ -17,15 +17,23 @@ export function KnowledgeBasePanel({ className }: KnowledgeBasePanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>('notes');
   const [notes, setNotes] = useState<NoteInfo[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selectedNote, setSelectedNote] = useState<string | null>(null);
   const [noteContent, setNoteContent] = useState<string | null>(null);
   const [loadingContent, setLoadingContent] = useState(false);
 
   const fetchNotes = async () => {
     setLoading(true);
-    try { const data = await obsidianService.listNotes(); setNotes(data.notes); }
-    catch (err) { console.error('获取笔记列表失败:', err); }
-    finally { setLoading(false); }
+    setError(null);
+    try {
+      const data = await obsidianService.listNotes();
+      setNotes(data.notes);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '获取笔记列表失败');
+      setNotes([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchNotes(); }, []);
@@ -33,7 +41,7 @@ export function KnowledgeBasePanel({ className }: KnowledgeBasePanelProps) {
   const handleSelectNote = async (filename: string) => {
     setSelectedNote(filename); setLoadingContent(true);
     try { const data = await obsidianService.getNote(filename); setNoteContent(data.content); }
-    catch (err) { setNoteContent('加载失败'); }
+    catch (err) { setNoteContent(`加载失败：${err instanceof Error ? err.message : '未知错误'}`); }
     finally { setLoadingContent(false); }
   };
 
@@ -80,9 +88,13 @@ export function KnowledgeBasePanel({ className }: KnowledgeBasePanelProps) {
               )}
             </div>
           </div>
+        ) : error ? (
+          <div className="text-center text-destructive py-8 text-sm px-4 leading-relaxed">
+            {error}
+          </div>
         ) : notes.length === 0 ? (
           <div className="text-center text-muted-foreground py-8 text-sm">
-            {loading ? 'Loading...' : 'No notes'}
+            {loading ? 'Loading...' : '暂无笔记'}
           </div>
         ) : (
           <div className="p-2 space-y-0.5">
