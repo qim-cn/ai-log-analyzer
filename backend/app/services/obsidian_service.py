@@ -142,10 +142,12 @@ async def _webdav_list(url: str, auth: httpx.BasicAuth | None) -> list[dict]:
     items = []
     text = resp.text
 
-    # 解析 XML 响应 - 支持 D: 和 d: 前缀
-    href_pattern = re.compile(r"<(?:d:|D:)href>([^<]+)</(?:d:|D:)href>")
-    collection_pattern = re.compile(r"<(?:d:|D:)collection\b[^>]*/>")
-    response_pattern = re.compile(r"<(?:d:|D:)response>(.*?)</(?:d:|D:)response>", re.DOTALL)
+    # 解析 XML 响应 - 兼容 DAV 命名空间的各种前缀（d: D: s: 等）以及无前缀（默认命名空间）。
+    # 此前只认 d:/D: 前缀，NAS 返回无前缀标签时解析为空 -> 侧边栏误显示 "No notes"。
+    ns = r"(?:[a-zA-Z]+:)?"
+    href_pattern = re.compile(rf"<{ns}href>([^<]+)</{ns}href>", re.IGNORECASE)
+    collection_pattern = re.compile(rf"<{ns}collection\b[^>]*>", re.IGNORECASE)
+    response_pattern = re.compile(rf"<{ns}response>(.*?)</{ns}response>", re.DOTALL | re.IGNORECASE)
 
     responses = response_pattern.findall(text)
 
