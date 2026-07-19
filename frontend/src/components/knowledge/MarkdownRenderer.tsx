@@ -39,7 +39,7 @@ export function MarkdownRenderer({ content, onLinkClick }: MarkdownRendererProps
       {/* Frontmatter 属性卡片 */}
       <FrontmatterCard frontmatter={frontmatter} />
 
-      <div className="prose prose-sm dark:prose-invert max-w-none
+      <div className="prose prose-sm dark:prose-invert max-w-none select-text
                     prose-headings:scroll-mt-20
                     prose-h1:text-2xl prose-h1:font-bold prose-h1:mb-4
                     prose-h2:text-xl prose-h2:font-semibold prose-h2:mt-8 prose-h2:mb-3
@@ -85,6 +85,10 @@ export function MarkdownRenderer({ content, onLinkClick }: MarkdownRendererProps
 
           // 链接：处理 wikilink
           a({ href, children, ...props }) {
+            // ==高亮== 占位 -> 渲染成 <mark>（可选中复制）
+            if (href === '#cmdhl') {
+              return <mark className="bg-yellow-500/20 text-yellow-300 px-1 rounded">{children}</mark>;
+            }
             if (href?.startsWith('[[') || (typeof children === 'string' && children.startsWith('[['))) {
               // Wikilink
               const linkText = typeof children === 'string'
@@ -151,10 +155,9 @@ function preprocessObsidian(content: string): string {
   let processed = content;
 
   // ==高亮文本== → <mark>高亮文本</mark>
-  processed = processed.replace(
-    /==([^=]+)==/g,
-    '<mark class="bg-yellow-500/20 text-yellow-300 px-1 rounded">$1</mark>'
-  );
+  // ==高亮文本== -> markdown 链接占位，由 a 组件渲染成 <mark>（可选中复制；
+  // 不再用原生 <mark> HTML，避免 react-markdown 转义成字面标签）
+  processed = processed.replace(/==([^=\n]+)==/g, '[$1](#cmdhl)');
 
   // ![[图片]] → 图片占位
   processed = processed.replace(

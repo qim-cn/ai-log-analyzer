@@ -8,6 +8,8 @@ from pydantic import BaseModel
 class CreateSessionRequest(BaseModel):
     """创建会话请求"""
     title: str | None = None
+    model: str | None = None
+    sn: str | None = None
 
 
 class SessionResponse(BaseModel):
@@ -16,6 +18,10 @@ class SessionResponse(BaseModel):
     title: str
     created_at: str
     updated_at: str
+    user_id: str | None = None
+    model: str | None = None
+    sn: str | None = None
+    status: str | None = "open"
 
 
 class SessionListResponse(BaseModel):

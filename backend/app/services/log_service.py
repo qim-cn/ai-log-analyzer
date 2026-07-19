@@ -200,16 +200,21 @@ class LogService:
             return log_repository.get_by_id(log_file.id)
 
     def get_log_content(self, log_file: LogFile, max_chars: int = 50000) -> str:
-        """获取日志内容"""
+        """获取日志内容（用于统计/对比/聚类/时间线等需要真实日志的场景）
+
+        优先级：DB content -> 磁盘文件（头尾截断）-> 摘要（最后兜底）。
+        summary 是结构化文本摘要，不能替代真实日志用于行级解析；
+        此前磁盘存储的日志（>1MB）误返回 summary，导致统计/对比/聚类/时间线全失真。
+        """
         if log_file.content:
             if len(log_file.content) <= max_chars:
                 return log_file.content
             half = max_chars // 2
             return log_file.content[:half] + "\n... (截断) ...\n" + log_file.content[-half:]
-        if log_file.summary:
-            return log_file.summary
         if log_file.disk_path and Path(log_file.disk_path).exists():
             return self._read_head_tail(log_file.disk_path, max_chars)
+        if log_file.summary:
+            return log_file.summary
         return "(文件内容不可用)"
 
     def get_error_lines_only(self, log_file: LogFile, max_lines: int = 500) -> str:

@@ -132,12 +132,12 @@ class AIService:
             raise AIError("AI 调用超时，请稍后重试")
         except httpx.ConnectError as e:
             logger.error(f"AI API 连接失败: {e}")
-            raise AIError(f"无法连接到 AI 服务: {base_url}")
+            raise AIError("无法连接到 AI 服务，请检查配置")
         except AIError:
             raise
         except Exception as e:
             logger.exception(f"AI 流式调用异常: {e}")
-            raise AIError(f"AI 调用失败: {str(e)}")
+            raise AIError("AI 调用失败，请稍后重试")
         finally:
             # 记录调用统计
             from app.services.stats_service import stats_service
@@ -195,12 +195,12 @@ class AIService:
         except httpx.TimeoutException:
             raise AIError("AI 调用超时")
         except httpx.ConnectError:
-            raise AIError(f"无法连接到 AI 服务: {base_url}")
+            raise AIError("无法连接到 AI 服务，请检查配置")
         except AIError:
             raise
         except Exception as e:
             logger.exception(f"AI 调用异常: {e}")
-            raise AIError(f"AI 调用失败: {str(e)}")
+            raise AIError("AI 调用失败，请稍后重试")
         finally:
             # 记录调用统计
             from app.services.stats_service import stats_service

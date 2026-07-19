@@ -24,6 +24,7 @@ from app.middlewares.auth_middleware import AuthMiddleware
 from app.middlewares.error_handler import register_error_handlers
 from app.services.prometheus_service import prometheus_service
 from app.services.rate_limiter import RateLimiterFactory
+from app.utils.request import get_client_ip
 
 # 配置日志
 logging.basicConfig(
@@ -129,7 +130,7 @@ app.add_middleware(AuthMiddleware)
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     """请求限流 + 请求日志"""
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
 
     if request.url.path == "/api/health":
         return await call_next(request)
@@ -170,6 +171,8 @@ register_error_handlers(app)
 # 路由注册
 # ============================================================
 
+from app.routes.anomaly_routes import router as anomaly_router
+from app.routes.repair_template_routes import router as repair_template_router
 from app.routes.auth_routes import router as auth_router
 from app.routes.audit_routes import router as audit_router
 from app.routes.chat_routes import router as chat_router
@@ -188,6 +191,8 @@ from app.routes.timeline_routes import router as timeline_router
 from app.routes.user_routes import router as user_router
 from app.routes.webhook_routes import router as webhook_router
 
+app.include_router(anomaly_router, prefix="/api/anomaly", tags=["异常检测"])
+app.include_router(repair_template_router, prefix="/api/repair-templates", tags=["维修模板"])
 app.include_router(auth_router, prefix="/api/auth", tags=["认证"])
 app.include_router(user_router, prefix="/api/users", tags=["用户管理"])
 app.include_router(session_router, prefix="/api/sessions", tags=["会话管理"])

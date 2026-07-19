@@ -5,23 +5,25 @@ GET /api/sessions/:id/export?format=markdown → 导出 Markdown
 GET /api/sessions/:id/export?format=pdf → 导出 PDF
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from app.middlewares.error_handler import ValidationError
 from app.services.export_service import export_service
+from app.utils.auth import require_session_owner as _require_session_owner
 
 router = APIRouter()
 
 
 @router.get("/{session_id}/export")
-async def export_session(session_id: str, format: str = "markdown"):
+async def export_session(session_id: str, request: Request, format: str = "markdown"):
     """
     导出会话
 
     Query Params:
         format: markdown 或 pdf
     """
+    _require_session_owner(session_id, request.state.user)
     if format not in ("markdown", "pdf"):
         raise ValidationError("格式只支持 markdown 或 pdf")
 

@@ -20,11 +20,19 @@ from app.repositories.user_repository import user_repository
 logger = logging.getLogger(__name__)
 
 # JWT 配置
-JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production-please-set-your-own-secret-key")
-if JWT_SECRET == "change-me-in-production-please-set-your-own-secret-key":
-    logger.warning("WARNING: 使用默认 JWT_SECRET，生产环境请设置环境变量 JWT_SECRET！")
+JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24
+
+# 安全启动校验：JWT_SECRET 必须由部署方显式设置且强度足够，
+# 否则任何人都能用公开默认密钥伪造任意身份（含管理员）。
+_INSECURE_DEFAULT = "change-me-in-production-please-set-your-own-secret-key"
+if not JWT_SECRET or JWT_SECRET == _INSECURE_DEFAULT or len(JWT_SECRET) < 32:
+    raise RuntimeError(
+        "安全启动失败：JWT_SECRET 未配置或强度不足（需 >=32 字节随机密钥）。\n"
+        "请在 .env 中设置 JWT_SECRET，例如执行：\n"
+        '  python -c "import secrets; print(secrets.token_hex(32))"'
+    )
 
 # 默认管理员
 DEFAULT_ADMIN_USERNAME = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")

@@ -7,7 +7,6 @@ Session 路由定义
 from fastapi import APIRouter, Request
 
 from app.models.user import UserRole
-from app.repositories.session_repository import session_repository
 from app.services.session_service import session_service
 from app.types.session_types import (
     CreateSessionRequest,
@@ -18,47 +17,53 @@ from app.types.session_types import (
 router = APIRouter()
 
 
+def _to_response(s) -> SessionResponse:
+    """Session -> SessionResponse（含机型/SN/状态）"""
+    return SessionResponse(
+        id=s.id,
+        title=s.title,
+        created_at=s.created_at,
+        updated_at=s.updated_at,
+        user_id=s.user_id,
+        model=s.model,
+        sn=s.sn,
+        status=s.status,
+    )
+
+
 @router.post("", response_model=dict)
 async def create_session(body: CreateSessionRequest, request: Request):
-    """创建新会话（自动关联当前用户）"""
+    """创建新会话（自动关联当前用户，可带机型/SN）"""
     user = request.state.user
-    session = session_service.create_session(title=body.title, user_id=user.id)
-    return {
-        "code": 0,
-        "message": "success",
-        "data": SessionResponse(
-            id=session.id,
-            title=session.title,
-            created_at=session.created_at,
-            updated_at=session.updated_at,
-        ),
-    }
+    session = session_service.create_session(
+        title=body.title, user_id=user.id, model=body.model, sn=body.sn
+    )
+    return {"code": 0, "message": "success", "data": _to_response(session)}
 
 
 @router.get("", response_model=dict)
-async def list_sessions(request: Request, limit: int = 100, offset: int = 0):
-    """获取会话列表（普通用户只看自己的，管理员看所有）"""
+async def list_sessions(
+    request: Request,
+    limit: int = 100,
+    offset: int = 0,
+    model: str | None = None,
+    status: str | None = None,
+    q: str | None = None,
+):
+    """获取会话列表（普通用户只看自己的，管理员看所有），支持机型/状态/关键字筛选"""
     user = request.state.user
     if user.role == UserRole.ADMIN:
-        sessions = session_service.list_sessions(limit=limit, offset=offset)
+        sessions = session_service.list_sessions(
+            limit=limit, offset=offset, model=model, status=status, q=q
+        )
     else:
         sessions = session_service.list_sessions_by_user(
-            user_id=user.id, limit=limit, offset=offset
+            user_id=user.id, limit=limit, offset=offset, model=model, status=status, q=q
         )
     return {
         "code": 0,
         "message": "success",
-        "data": SessionListResponse(
-            sessions=[
-                SessionResponse(
-                    id=s.id,
-                    title=s.title,
-                    created_at=s.created_at,
-                    updated_at=s.updated_at,
-                )
-                for s in sessions
-            ]
-        ),
+        "data": SessionListResponse(sessions=[_to_response(s) for s in sessions]),
     }
 
 
@@ -73,16 +78,7 @@ async def get_session(session_id: str, request: Request):
         from app.middlewares.error_handler import ValidationError
         raise ValidationError("无权访问此会话")
 
-    return {
-        "code": 0,
-        "message": "success",
-        "data": SessionResponse(
-            id=session.id,
-            title=session.title,
-            created_at=session.created_at,
-            updated_at=session.updated_at,
-        ),
-    }
+    return {"code": 0, "message": "success", "data": _to_response(session)}
 
 
 @router.put("/{session_id}/rename", response_model=dict)

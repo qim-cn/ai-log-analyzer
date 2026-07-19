@@ -6,6 +6,8 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Copy, Check, Paperclip, FileText, GitCompareArrows } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
+import { SaveToKnowledgeButton } from './SaveToKnowledgeButton';
+import { AnomalyBanner } from './AnomalyBanner';
 import { ThinkingBubble } from './ThinkingBubble';
 import { ChatInput } from './ChatInput';
 import { ExportButton } from '@/components/export/ExportButton';
@@ -29,27 +31,23 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
     fetchMessages,
     sendMessage,
     clearMessages,
+    abortStreaming,
   } = useChatStore();
 
   const { logFiles, fetchLogs, uploadLog, uploading } = useLogStore();
 
-  // 提取日志摘要供保存知识库使用
-  const logSnippet = logFiles.length > 0
-    ? logFiles.map(f => f.content || f.summary || '').filter(Boolean).join('\n').slice(0, 4000)
-    : '';
-  const logSummary = logFiles.length > 0
-    ? logFiles.map(f => f.filename).join(', ')
-    : '';
   const sessions = useSessionStore((s) => s.sessions);
   const currentSession = sessions.find((s) => s.id === sessionId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showCompare, setShowCompare] = useState(false);
 
   useEffect(() => {
+    // 切换会话时取消上一个会话仍在进行的流式回复，避免旧 chunk 串到新会话
+    abortStreaming();
     clearMessages();
     fetchMessages(sessionId);
     fetchLogs(sessionId);
-  }, [sessionId, fetchMessages, clearMessages, fetchLogs]);
+  }, [sessionId, fetchMessages, clearMessages, fetchLogs, abortStreaming]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -135,6 +133,8 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
         </div>
       </div>
 
+      <AnomalyBanner sessionId={sessionId} />
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         {loading && messages.length === 0 ? (
@@ -156,7 +156,7 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
         ) : (
           <div className="py-4">
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} logSnippet={logSnippet} logSummary={logSummary} />
+              <MessageBubble key={msg.id} message={msg} />
             ))}
 
             {thinking && !streamingContent && (
@@ -227,6 +227,8 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
             <span>{uploading ? '上传中...' : '上传日志'}</span>
           </button>
 
+          {/* 保存知识库按钮（紧挨上传日志） */}
+          <SaveToKnowledgeButton sessionId={sessionId} disabled={messages.length === 0} />
         </div>
 
         {/* 输入框 */}

@@ -6,9 +6,10 @@ import { useEffect, useState } from 'react';
 import { LogIn, Loader2 } from 'lucide-react';
 import { authService } from '@/services/authService';
 import { cn } from '@/utils';
+import type { User } from '@/types';
 
 interface LoginPageProps {
-  onLogin: (token: string, user: unknown) => void;
+  onLogin: (user: User) => void;
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
@@ -47,14 +48,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       if (isFirstTime) {
         await authService.setup(username, password);
         const loginData = await authService.login(username, password);
-        localStorage.setItem('token', loginData.token);
         localStorage.setItem('user', JSON.stringify(loginData.user));
-        onLogin(loginData.token, loginData.user);
+        onLogin(loginData.user);
       } else {
         const data = await authService.login(username, password);
-        localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        onLogin(data.token, data.user);
+        onLogin(data.user);
       }
     } catch (err) {
       console.error('[LoginPage]', err);

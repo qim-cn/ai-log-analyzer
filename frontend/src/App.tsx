@@ -7,6 +7,7 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { LoginPage } from '@/pages/LoginPage';
+import { authService } from '@/services/authService';
 import { useThemeStore } from '@/stores';
 import type { User } from '@/types';
 
@@ -41,29 +42,31 @@ export default function App() {
     }
   }, [theme]);
 
-  // 检查登录状态
+  // 检查登录状态（乐观：本地有 user 即进入；真实校验由 httpOnly cookie + 每个 API 调用保证，
+  // cookie 失效时首个请求 401 -> clearAuth 清掉本地 user -> 跳转登录页）
   useEffect(() => {
-    const token = localStorage.getItem('token');
     const userStr = localStorage.getItem('user');
-    if (token && userStr) {
+    if (userStr) {
       try {
-        const user = JSON.parse(userStr);
-        setCurrentUser(user);
+        setCurrentUser(JSON.parse(userStr));
         setIsLoggedIn(true);
       } catch {
-        localStorage.removeItem('token');
         localStorage.removeItem('user');
       }
     }
   }, []);
 
-  const handleLogin = (_token: string, user: unknown) => {
-    setCurrentUser(user as User);
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
     setIsLoggedIn(true);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+    } catch {
+      // 即使服务端清除失败也本地登出
+    }
     localStorage.removeItem('user');
     setCurrentUser(null);
     setIsLoggedIn(false);

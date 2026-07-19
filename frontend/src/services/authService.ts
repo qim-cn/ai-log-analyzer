@@ -17,6 +17,9 @@ export const authService = {
   login: (username: string, password: string) =>
     http.post<LoginResponse>('/auth/login', { username, password }),
 
+  /** 登出（清除 httpOnly cookie） */
+  logout: () => http.post<null>('/auth/logout'),
+
   /** 获取当前用户 */
   me: () => http.get<User>('/auth/me'),
 

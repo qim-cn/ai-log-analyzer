@@ -20,6 +20,7 @@ from urllib.parse import unquote
 import httpx
 
 from app.config.database import get_connection
+from app.middlewares.error_handler import AppError
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,15 @@ def _get_settings() -> dict:
         "resolved_path": config.get("obsidian_resolved_path", ""),
         "auto_save": config.get("obsidian_auto_save", "false") == "true",
     }
+
+
+def _is_within(path: Path, base: Path) -> bool:
+    """判断 path 是否位于 base 目录内（含 base 自身），防止路径穿越。"""
+    try:
+        path.relative_to(base)
+    except ValueError:
+        return False
+    return True
 
 
 def _make_webdav_url(base_url: str, path: str) -> str:
@@ -113,44 +123,51 @@ async def _webdav_get(url: str, auth: httpx.BasicAuth | None) -> Optional[str]:
 
 
 async def _webdav_list(url: str, auth: httpx.BasicAuth | None) -> list[dict]:
-    """列出 WebDAV 目录内容"""
-    try:
-        headers = {"Depth": "1"}
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.request("PROPFIND", url, headers=headers, auth=auth)
-            if resp.status_code != 207:
-                return []
+    """列出 WebDAV 目录内容。
 
-            items = []
-            text = resp.text
+    失败时抛出 AppError（带可读消息），以便上层区分"连接/认证失败"与"目录为空"，
+    不再静默返回 [] 导致前端误显示 "No notes"。
+    """
+    headers = {"Depth": "1"}
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.request("PROPFIND", url, headers=headers, auth=auth)
 
-            # 解析 XML 响应 - 支持 D: 和 d: 前缀
-            href_pattern = re.compile(r"<(?:d:|D:)href>([^<]+)</(?:d:|D:)href>")
-            collection_pattern = re.compile(r"<(?:d:|D:)collection\b[^>]*/>")
-            response_pattern = re.compile(r"<(?:d:|D:)response>(.*?)</(?:d:|D:)response>", re.DOTALL)
+    if resp.status_code == 401:
+        raise AppError("Obsidian WebDAV 认证失败，请在设置中检查用户名/密码")
+    if resp.status_code == 404:
+        raise AppError("Obsidian WebDAV 仓库路径不存在，请检查路径配置")
+    if resp.status_code != 207:
+        raise AppError(f"Obsidian WebDAV 返回异常状态 {resp.status_code}")
 
-            responses = response_pattern.findall(text)
+    items = []
+    text = resp.text
 
-            for resp_text in responses:
-                href_match = href_pattern.search(resp_text)
-                if not href_match:
-                    continue
+    # 解析 XML 响应 - 兼容 DAV 命名空间的各种前缀（d: D: s: 等）以及无前缀（默认命名空间）。
+    # 此前只认 d:/D: 前缀，NAS 返回无前缀标签时解析为空 -> 侧边栏误显示 "No notes"。
+    ns = r"(?:[a-zA-Z]+:)?"
+    href_pattern = re.compile(rf"<{ns}href>([^<]+)</{ns}href>", re.IGNORECASE)
+    collection_pattern = re.compile(rf"<{ns}collection\b[^>]*>", re.IGNORECASE)
+    response_pattern = re.compile(rf"<{ns}response>(.*?)</{ns}response>", re.DOTALL | re.IGNORECASE)
 
-                href = href_match.group(1)
-                name = unquote(href.rstrip("/").split("/")[-1])
+    responses = response_pattern.findall(text)
 
-                is_collection = bool(collection_pattern.search(resp_text))
+    for resp_text in responses:
+        href_match = href_pattern.search(resp_text)
+        if not href_match:
+            continue
 
-                items.append({
-                    "name": name,
-                    "href": href,
-                    "is_collection": is_collection,
-                })
+        href = href_match.group(1)
+        name = unquote(href.rstrip("/").split("/")[-1])
 
-            return items
-    except Exception as e:
-        logger.error(f"WebDAV LIST failed: {e}")
-        return []
+        is_collection = bool(collection_pattern.search(resp_text))
+
+        items.append({
+            "name": name,
+            "href": href,
+            "is_collection": is_collection,
+        })
+
+    return items
 
 
 def _sanitize_filename(title: str) -> str:
@@ -161,6 +178,77 @@ def _sanitize_filename(title: str) -> str:
     return safe.strip()
 
 
+COMPILE_CASE_PROMPT = """你是产线故障案例整理助手。把下面这段产线测试诊断对话和日志，整理成一个"已解决故障案例"。
+
+严格按以下格式输出，每段以 ===段名=== 开头，段与段之间用空行分隔，不要任何额外说明或前后缀：
+
+===原始日志===
+<从日志里摘出关键错误行/关键字段，保留原样，不要编造>
+
+===故障原因===
+<故障部件 + 根因判定，1-3 句>
+
+===AI建议===
+<AI 给出的排查/维修方向建议，用编号列表（1. 2. 3.），每条一个独立方向，不要 == 标记>
+
+===DEBUG诊断===
+<用到的 Linux 诊断命令，每条一行，不要 == 标记、不要反引号>
+
+===定位过程===
+<排查定位的步骤，简明分步>
+
+===维修操作===
+<若对话里明确提到实际修复动作（如用户反馈"换件后通过""重插拔好了""重跑 PASS"等），则如实填入；否则留空，由工程师补填>
+
+对话：
+{conversation}
+
+日志：
+{log}
+"""
+
+
+def _parse_case_sections(text: str) -> dict:
+    """解析 AI 输出的 ===段名=== 结构为 6 段 dict。"""
+    mapping = {
+        "原始日志": "log",
+        "故障原因": "cause",
+        "AI建议": "suggestion",
+        "DEBUG诊断": "debug",
+        "定位过程": "process",
+        "维修操作": "repair",
+    }
+    result = {k: "" for k in mapping.values()}
+    parts = re.split(r"={2,}\s*([^=\n]+?)\s*={2,}", text)
+    i = 1
+    while i + 1 < len(parts):
+        key = mapping.get(parts[i].strip())
+        if key:
+            result[key] = parts[i + 1].strip()
+        i += 2
+    return result
+
+
+def _wrap_resolved_note(title: str, model: str, now: str, user: str, body: str) -> str:
+    """用 frontmatter 包裹前端组装好的正文，落盘到已解决案例。"""
+    model_line = model or "未分类"
+    return f"""---
+model: {model_line}
+title: {title}
+date: {now}
+user: {user}
+type: resolved
+tags:
+  - resolved
+  - {model_line}
+---
+
+# [{model_line}] {title}
+
+{body}
+"""
+
+
 def generate_note_content(
     title: str,
     model: str,
@@ -169,9 +257,15 @@ def generate_note_content(
     analysis: str,
     repair_notes: str = "",
     user: str = "admin",
+    body: str = "",
 ) -> str:
-    """生成已解决的笔记内容。repair_notes 为用户填写，没有则用 AI 分析结果"""
+    """生成已解决的笔记内容。
+    - body 非空：直接用前端组装好的正文（6 段结构），只包 frontmatter；
+    - 否则：按 analysis 关键词切分（旧逻辑）。
+    """
     now = datetime.utcnow().isoformat() + "Z"
+    if body:
+        return _wrap_resolved_note(title, model, now, user, body)
     sections = parse_analysis(analysis)
 
     # 提取日志关键字段（前 10 行非空行）
@@ -309,7 +403,21 @@ class ObsidianService:
     def _local_get_file_tree(self, path: str = "") -> list[dict]:
         """从本地文件系统获取文件树"""
         vault_dir = self._get_local_vault_dir()
-        target_dir = vault_dir / path.strip("/") if path else vault_dir
+        vault_root = vault_dir.resolve()
+
+        # 安全校验：拒绝穿越
+        if path and ".." in Path(path).parts:
+            logger.warning(f"拒绝越界路径访问: {path}")
+            return []
+
+        target_dir = (vault_dir / path.strip("/")) if path else vault_dir
+        try:
+            target_dir = target_dir.resolve()
+        except OSError:
+            return []
+        if not _is_within(target_dir, vault_root):
+            logger.warning(f"拒绝越界目录访问: {path} -> {target_dir}")
+            return []
 
         if not target_dir.exists() or not target_dir.is_dir():
             logger.warning(f"Local vault directory not found: {target_dir}")
@@ -358,30 +466,29 @@ class ObsidianService:
     def _local_get_file_content(self, path: str) -> Optional[str]:
         """从本地文件系统读取文件内容"""
         vault_dir = self._get_local_vault_dir()
+        vault_root = vault_dir.resolve()
 
-        # 处理路径：移除可能的 vault_path 前缀重复
         clean_path = path
-        vault_path_str = str(vault_dir).replace("\\", "/")
+        # 安全校验：绝对路径与 .. 段一律禁止，防止读取 vault 外文件
+        if clean_path.startswith("/") or ".." in Path(clean_path).parts:
+            logger.warning(f"拒绝越界路径访问: {path}")
+            return None
 
-        # 尝试多种路径组合
-        candidates = [
-            vault_dir / clean_path,
-            vault_dir.parent / clean_path,  # 如果 path 包含 vault 名
-        ]
-
-        # 如果 path 是绝对路径（从根开始的），也尝试
-        if clean_path.startswith("/"):
-            candidates.insert(0, Path(clean_path))
+        # 只允许在 vault 目录内查找
+        candidates = [vault_dir / clean_path]
 
         for file_path in candidates:
             try:
                 resolved = file_path.resolve()
+                if not _is_within(resolved, vault_root):
+                    logger.warning(f"拒绝越界文件访问: {path} -> {resolved}")
+                    continue
                 if resolved.exists() and resolved.is_file():
                     return resolved.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError, PermissionError):
                 continue
 
-        logger.warning(f"Local file not found: {path}, tried: {[str(c) for c in candidates]}")
+        logger.warning(f"Local file not found: {path}")
         return None
 
     def _local_list_notes(self) -> list[dict]:
@@ -523,18 +630,67 @@ class ObsidianService:
         repair_notes: str = "",
         user: str = "admin",
         resolved: bool = False,
+        body: str = "",
     ) -> dict:
-        """保存笔记。resolved=True → 写入本地。repair_notes 由用户填写"""
+        """保存笔记。resolved=True -> 写入本地。body 非空则直接落盘正文，repair_notes 由用户填写"""
         if resolved:
-            return self._save_resolved_local(title, save_path, log_summary, log_snippet, analysis, repair_notes, user)
+            return self._save_resolved_local(title, save_path, log_summary, log_snippet, analysis, repair_notes, user, body)
         if self._is_webdav_configured():
             return await self._save_note_webdav(title, save_path, log_summary, log_snippet, analysis, repair_notes, user, False)
         else:
             return self._local_save_note(title, save_path, log_summary, log_snippet, analysis, repair_notes, user, False)
 
+    async def compile_case_draft(self, session_id: str) -> dict:
+        """编译整段对话+日志为结构化案例草稿（6 段）。AI 不可用则回退启发式。"""
+        from app.services.log_service import log_service
+        from app.services.message_service import message_service
+
+        messages = message_service.get_messages(session_id)
+        log_summary = log_service.get_logs_summary_for_session(session_id)
+
+        convo = "\n\n".join(
+            f"[{m.role.value}]\n{m.content}" for m in messages
+        ) or "(无对话内容)"
+
+        try:
+            from app.services.ai_service import ai_service
+            prompt = COMPILE_CASE_PROMPT.format(
+                conversation=convo[:12000], log=log_summary or "(无日志)"
+            )
+            result = await ai_service.chat(
+                [
+                    {"role": "system", "content": "你是产线故障案例整理助手，只按指定格式输出。"},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+            )
+            sections = _parse_case_sections(result)
+            logger.info("案例草稿 AI 编译完成")
+        except Exception as e:
+            logger.warning(f"AI 编译草稿失败，回退启发式: {e}")
+            sections = self._heuristic_case_sections(messages, log_summary)
+
+        # 维修操作：保留 AI 从对话里提取的实际修复动作（若有）；对话里没提到则留空，
+        # 由前端防呆面板引导工程师勾选/补填。不再强制清空。
+        sections["success"] = True
+        return sections
+
+    def _heuristic_case_sections(self, messages: list, log_summary: str) -> dict:
+        """AI 不可用时的启发式切分：把所有 AI 回复拼起来按 parse_analysis 切。"""
+        ai_text = "\n\n".join(m.content for m in messages if m.role.value == "assistant")
+        sections = parse_analysis(ai_text)
+        return {
+            "log": log_summary or sections.get("summary", ""),
+            "cause": sections.get("cause", ""),
+            "suggestion": sections.get("solution", ""),
+            "debug": "",
+            "process": sections.get("method", ""),
+            "repair": "",
+        }
+
     def _save_resolved_local(
         self, title: str, save_path: str, log_summary: str, log_snippet: str,
-        analysis: str, repair_notes: str = "", user: str = "admin",
+        analysis: str, repair_notes: str = "", user: str = "admin", body: str = "",
     ) -> dict:
         """已解决 → /resolved/{resolved_path}/{save_path}/{标题}.md"""
         config = _get_settings()
@@ -550,7 +706,7 @@ class ObsidianService:
 
         content = generate_note_content(
             title=title, model=clean_path, log_summary=log_summary, log_snippet=log_snippet,
-            analysis=analysis, repair_notes=repair_notes, user=user,
+            analysis=analysis, repair_notes=repair_notes, user=user, body=body,
         )
 
         file_path = target_dir / filename
@@ -649,7 +805,13 @@ updated: {datetime.utcnow().isoformat()}Z
         vault_path = config["vault_path"].strip("/")
 
         dir_url = _make_webdav_url(base_url, vault_path)
-        items = await _webdav_list(dir_url, auth)
+        try:
+            items = await _webdav_list(dir_url, auth)
+        except AppError:
+            raise
+        except Exception as e:
+            logger.error(f"列出笔记失败 (WebDAV 网络异常): {e}")
+            raise AppError("Obsidian 知识库连接失败，请检查 WebDAV 服务是否可达")
 
         notes = []
         for item in items:
@@ -691,6 +853,10 @@ updated: {datetime.utcnow().isoformat()}Z
 
     async def _get_file_tree_webdav(self, path: str = "") -> list[dict]:
         """通过 WebDAV 获取文件树（从 Vault 根目录开始浏览）"""
+        # 安全校验：禁止穿越到 vault 之外
+        if path and any(part == ".." for part in path.split("/")):
+            logger.warning(f"拒绝越界 WebDAV 路径: {path}")
+            return []
         config = _get_settings()
         auth = _webdav_auth(config["webdav_user"], config["webdav_pass"])
         base_url = config["webdav_url"].rstrip("/")
@@ -705,7 +871,12 @@ updated: {datetime.utcnow().isoformat()}Z
 
     async def _list_dir(self, auth, dir_url, depth: int = 0):
         """列出目录内容。depth=0 时只列一层（不递归），提升性能"""
-        items = await _webdav_list(dir_url, auth)
+        try:
+            items = await _webdav_list(dir_url, auth)
+        except Exception as e:
+            # 文件树浏览容忍单目录失败，静默返回空（错误已在 _webdav_list/上层记录）
+            logger.error(f"WebDAV 列目录失败: {e}")
+            return []
         from urllib.parse import urlparse
         cur = urlparse(dir_url).path.rstrip("/")
 
@@ -744,6 +915,10 @@ updated: {datetime.utcnow().isoformat()}Z
         base_url = config["webdav_url"].rstrip("/")
         # path 去掉可能的 Obsidian Vault/ 前缀
         clean = unquote(path).lstrip("/")
+        # 安全校验：禁止穿越到 vault 之外
+        if any(part == ".." for part in clean.split("/")):
+            logger.warning(f"拒绝越界 WebDAV 路径: {path}")
+            return None
         bp = self._base_path + "/" if getattr(self, "_base_path", "") else ""
         clean = clean.removeprefix(bp) if bp else clean
         return await _webdav_get(_make_webdav_url(base_url, clean), auth)

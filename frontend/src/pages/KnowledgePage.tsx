@@ -9,7 +9,7 @@ import {
   ArrowLeft, Search, FileText, Folder, FolderOpen, ChevronRight, ChevronDown,
   RefreshCw, Terminal, CheckCircle2, Trash2,
 } from 'lucide-react';
-import { obsidianService, type FileTreeNode } from '@/services/obsidianService';
+import { obsidianService, type FileTreeNode, type ResolvedFile } from '@/services/obsidianService';
 import { MarkdownRenderer } from '@/components/knowledge/MarkdownRenderer';
 import { OutlinePanel } from '@/components/knowledge/OutlinePanel';
 import { LinuxKnowledgePanel } from '@/components/knowledge/LinuxKnowledgePanel';
@@ -18,14 +18,6 @@ import { cn } from '@/utils';
 interface KnowledgePageProps {
   onBack: () => void;
   initialPath?: string;
-}
-
-interface ResolvedFile {
-  filename: string;
-  title: string;
-  model: string;
-  size: number;
-  mtime: number;
 }
 
 export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
@@ -47,17 +39,14 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
     setLoading(true);
     try {
       // 读配置：只加载设置中选中的浏览目录
-      const cfg = await fetch('/api/obsidian/browse-paths');
-      const cd = await cfg.json();
-      const paths: string[] = cd.data?.browse_paths || [];
+      const cfg = await obsidianService.getBrowsePaths();
+      const paths: string[] = cfg.browse_paths || [];
       if (paths.length > 0) {
-        const trees = await Promise.all(paths.map(p =>
-          fetch(`/api/obsidian/tree?path=${encodeURIComponent(p)}`).then(r => r.json())
-        ));
+        const trees = await Promise.all(paths.map(p => obsidianService.getFileTree(p)));
         const combined: FileTreeNode[] = [];
         trees.forEach((t, i) => {
           const dirName = paths[i] || '(根目录)';
-          const items = (t.data?.tree || []).filter((n: FileTreeNode) =>
+          const items = (t.tree || []).filter((n: FileTreeNode) =>
             n.type === 'folder' || /\.(md|canvas|txt|ppt|pptx|pdf|json|log|csv|sh|py|yaml|yml|conf)$/i.test(n.name));
           if (items.length > 0) {
             combined.push({ name: dirName, path: paths[i], type: 'folder', children: items });
@@ -66,9 +55,8 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
         setTree(combined);
       } else {
         // 没有选择 → 加载根目录
-        const r = await fetch('/api/obsidian/tree');
-        const d = await r.json();
-        setTree(d.data?.tree || []);
+        const d = await obsidianService.getFileTree();
+        setTree(d.tree || []);
       }
     } catch (err) { console.error('获取文件树失败:', err); }
     finally { setLoading(false); }
@@ -77,9 +65,8 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
   const fetchResolved = useCallback(async () => {
     setResolvedLoading(true);
     try {
-      const r = await fetch('/api/obsidian/resolved/list');
-      const d = await r.json();
-      setResolvedFiles(d.data || []);
+      const d = await obsidianService.listResolved();
+      setResolvedFiles(d || []);
     } catch (err) { console.error(err); }
     finally { setResolvedLoading(false); }
   }, []);
@@ -89,9 +76,8 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
   const fetchContent = useCallback(async (path: string) => {
     setLoadingContent(true);
     try {
-      const r = await fetch(`/api/obsidian/file?path=${encodeURIComponent(path)}`);
-      const d = await r.json();
-      setFileContent(d.data?.content || '');
+      const d = await obsidianService.getFileContent(path);
+      setFileContent(d.content || '');
     } catch (err) { setFileContent('加载失败'); }
     finally { setLoadingContent(false); }
   }, []);
@@ -99,9 +85,8 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
   const fetchResolvedContent = useCallback(async (filename: string) => {
     setLoadingContent(true);
     try {
-      const r = await fetch(`/api/obsidian/resolved/file?filename=${encodeURIComponent(filename)}`);
-      const d = await r.json();
-      setFileContent(d.data?.content || '空文件');
+      const d = await obsidianService.getResolvedFile(filename);
+      setFileContent(d.content || '空文件');
       setSelectedPath(filename);
     } catch (err) { setFileContent('加载失败'); }
     finally { setLoadingContent(false); }
@@ -132,12 +117,9 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
   const handleDeleteResolved = async (filename: string) => {
     if (!confirm('确定删除这条已解决记录？')) return;
     try {
-      const token = localStorage.getItem('token');
-      const r = await fetch(`/api/obsidian/resolved/file?filename=${encodeURIComponent(filename)}`, {
-        method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
-      });
-      if (r.ok) { fetchResolved(); if (selectedPath === filename) { setSelectedPath(null); setFileContent(null); } }
-      else { const d = await r.json(); alert(d.message || '删除失败'); }
+      await obsidianService.deleteResolvedFile(filename);
+      fetchResolved();
+      if (selectedPath === filename) { setSelectedPath(null); setFileContent(null); }
     } catch (err) { alert('删除失败'); }
   };
 
