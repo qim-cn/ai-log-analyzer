@@ -94,6 +94,7 @@ def init_database() -> None:
             content     TEXT,
             disk_path   TEXT,
             summary     TEXT,
+            masking_map TEXT,
             created_at  TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
         );
@@ -170,6 +171,13 @@ def init_database() -> None:
         conn.execute("SELECT user_id FROM sessions LIMIT 1")
     except Exception:
         conn.execute("ALTER TABLE sessions ADD COLUMN user_id TEXT")
+        conn.commit()
+
+    # 迁移：log_files 加 masking_map 列（脱敏占位符 -> 原始值 的 JSON 映射）
+    try:
+        conn.execute("SELECT masking_map FROM log_files LIMIT 1")
+    except Exception:
+        conn.execute("ALTER TABLE log_files ADD COLUMN masking_map TEXT")
         conn.commit()
 
     # 迁移：sessions 加机型/SN/状态字段（多台相同失败检测 + 会话筛选用）

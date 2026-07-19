@@ -5,8 +5,12 @@ Log 业务逻辑层
 - 小文件（<=1MB）：存数据库 content 字段
 - 中等文件（1MB~10MB）：存磁盘，数据库存路径 + 摘要
 - 大文件（>10MB）：流式分块解析，存磁盘
+- 上传入库前统一脱敏（settings.mask_sensitive_data），
+  占位符映射存 log_files.masking_map
 """
 
+import codecs
+import json
 import logging
 import re
 import uuid
@@ -17,6 +21,7 @@ from app.config.settings import settings
 from app.middlewares.error_handler import ValidationError
 from app.models.log_file import LogFile, LogFileType
 from app.repositories.log_repository import log_repository
+from app.services.masking_service import masking_service
 from app.utils.log_parser import (
     LogStatistics,
     LogSummary,
@@ -102,24 +107,54 @@ class LogService:
         last_lines_buffer = []
         max_tail = 30
 
+        # 脱敏器：同一文件全程复用同一实例，保证同一敏感值映射到同一占位符
+        mask_enabled = masking_service.is_enabled()
+        masker = masking_service.create_masker() if mask_enabled else None
+        # 增量解码 + 行级缓冲：保证跨分块的 UTF-8 字符和敏感值不被截断
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        pending = ""
+
+        def _collect_stats(text: str) -> None:
+            nonlocal line_count, error_count, warning_count
+            for line in text.split("\n"):
+                if not line.strip():
+                    continue
+                line_count += 1
+                if len(first_lines) < 30:
+                    first_lines.append(line)
+                last_lines_buffer.append(line)
+                if len(last_lines_buffer) > max_tail:
+                    last_lines_buffer.pop(0)
+                if ERROR_PATTERN.search(line):
+                    error_count += 1
+                elif WARN_PATTERN.search(line):
+                    warning_count += 1
+
+        def _emit(f, text: str) -> None:
+            """脱敏后写盘并统计"""
+            if masker is not None:
+                text = masker.mask(text)
+            f.write(text.encode("utf-8"))
+            _collect_stats(text)
+
         with open(disk_path, "wb") as f:
             async for chunk in file_iterator:
-                f.write(chunk)
-                # 统计行数和错误
-                text = chunk.decode("utf-8", errors="replace")
-                for line in text.split("\n"):
-                    if not line.strip():
-                        continue
-                    line_count += 1
-                    if len(first_lines) < 30:
-                        first_lines.append(line)
-                    last_lines_buffer.append(line)
-                    if len(last_lines_buffer) > max_tail:
-                        last_lines_buffer.pop(0)
-                    if ERROR_PATTERN.search(line):
-                        error_count += 1
-                    elif WARN_PATTERN.search(line):
-                        warning_count += 1
+                if masker is None:
+                    # 未开启脱敏：保持原始字节写盘，仅做统计
+                    f.write(chunk)
+                    _collect_stats(chunk.decode("utf-8", errors="replace"))
+                    continue
+                # 只处理到最后一个换行符为止，剩余部分留到下一分块，
+                # 避免敏感值恰好落在分块边界时漏脱敏
+                pending += decoder.decode(chunk)
+                last_newline = pending.rfind("\n")
+                if last_newline >= 0:
+                    _emit(f, pending[: last_newline + 1])
+                    pending = pending[last_newline + 1:]
+            if masker is not None:
+                pending += decoder.decode(b"", final=True)
+                if pending:
+                    _emit(f, pending)
 
         # 生成摘要
         summary = self._generate_summary(
@@ -127,11 +162,16 @@ class LogService:
             first_lines, last_lines_buffer
         )
 
-        # 更新 DB
+        # 更新 DB（含脱敏映射，供将来还原）
+        masking_map_json = (
+            json.dumps(masker.mapping, ensure_ascii=False)
+            if masker is not None and masker.mapping
+            else None
+        )
         conn = get_connection()
         conn.execute(
-            "UPDATE log_files SET disk_path = ?, summary = ?, line_count = ? WHERE id = ?",
-            (disk_path, summary, line_count, log_file.id),
+            "UPDATE log_files SET disk_path = ?, summary = ?, line_count = ?, masking_map = ? WHERE id = ?",
+            (disk_path, summary, line_count, masking_map_json, log_file.id),
         )
         conn.commit()
 
@@ -168,6 +208,15 @@ class LogService:
 
         file_type = LogFileType(ext.lstrip("."))
         text_content = content.decode("utf-8", errors="replace")
+
+        # 入库前脱敏：后续所有下游（统计/摘要/发给 LLM 的内容）都是脱敏后的
+        mask_enabled = masking_service.is_enabled()
+        masking_map_json = None
+        if mask_enabled:
+            text_content, mapping = masking_service.mask_text(text_content)
+            if mapping:
+                masking_map_json = json.dumps(mapping, ensure_ascii=False)
+
         line_count = text_content.count("\n") + 1
 
         summary_obj = parse_log_text(text_content, len(content))
@@ -181,6 +230,7 @@ class LogService:
                 line_count=line_count,
                 content=text_content,
                 summary=summary_obj.to_prompt_text(),
+                masking_map=masking_map_json,
             )
         else:
             storage_dir = Path(settings.log_storage_path)
@@ -190,11 +240,14 @@ class LogService:
                 file_size=len(content), line_count=line_count, disk_path="",
             )
             disk_path = str(storage_dir / f"{log_file.id}{ext}")
-            Path(disk_path).write_bytes(content)
+            if mask_enabled:
+                Path(disk_path).write_text(text_content, encoding="utf-8")
+            else:
+                Path(disk_path).write_bytes(content)
             conn = get_connection()
             conn.execute(
-                "UPDATE log_files SET disk_path = ?, summary = ? WHERE id = ?",
-                (disk_path, summary_obj.to_prompt_text(), log_file.id),
+                "UPDATE log_files SET disk_path = ?, summary = ?, masking_map = ? WHERE id = ?",
+                (disk_path, summary_obj.to_prompt_text(), masking_map_json, log_file.id),
             )
             conn.commit()
             return log_repository.get_by_id(log_file.id)
