@@ -34,17 +34,34 @@ export interface ResolvedFile {
 }
 
 export const obsidianService = {
-  /** 保存分析结果。model=机型(子目录), repair_notes=维修操作, session_id=标记已解决 */
+  /** 保存案例。model=机型(子目录), body=组装好的正文(6段), session_id=标记已解决 */
   save: (data: {
     title: string;
     model?: string;
     log_summary?: string;
     log_snippet?: string;
-    analysis: string;
+    analysis?: string;
     repair_notes?: string;
     session_id?: string;
     resolved?: boolean;
+    body?: string;
   }) => http.post<{ success: boolean; filename: string; message: string }>('/obsidian/save', data),
+
+  /** 案例反馈（有用/无关，先收集后续优化检索） */
+  feedback: (filename: string, helpful: boolean) =>
+    http.post<{ message: string }>('/obsidian/feedback', { filename, helpful }),
+
+  /** 从整段对话+日志编译结构化案例草稿（6 段） */
+  compileDraft: (sessionId: string) =>
+    http.post<{
+      success: boolean;
+      log: string;
+      cause: string;
+      suggestion: string;
+      debug: string;
+      process: string;
+      repair: string;
+    }>('/obsidian/compile-draft', { session_id: sessionId }),
 
   /** 获取笔记列表 */
   listNotes: () => http.get<{ notes: NoteInfo[] }>('/obsidian/notes'),

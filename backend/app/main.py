@@ -171,6 +171,8 @@ register_error_handlers(app)
 # 路由注册
 # ============================================================
 
+from app.routes.anomaly_routes import router as anomaly_router
+from app.routes.repair_template_routes import router as repair_template_router
 from app.routes.auth_routes import router as auth_router
 from app.routes.audit_routes import router as audit_router
 from app.routes.chat_routes import router as chat_router
@@ -189,6 +191,8 @@ from app.routes.timeline_routes import router as timeline_router
 from app.routes.user_routes import router as user_router
 from app.routes.webhook_routes import router as webhook_router
 
+app.include_router(anomaly_router, prefix="/api/anomaly", tags=["异常检测"])
+app.include_router(repair_template_router, prefix="/api/repair-templates", tags=["维修模板"])
 app.include_router(auth_router, prefix="/api/auth", tags=["认证"])
 app.include_router(user_router, prefix="/api/users", tags=["用户管理"])
 app.include_router(session_router, prefix="/api/sessions", tags=["会话管理"])

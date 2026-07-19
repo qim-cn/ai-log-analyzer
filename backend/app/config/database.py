@@ -172,6 +172,67 @@ def init_database() -> None:
         conn.execute("ALTER TABLE sessions ADD COLUMN user_id TEXT")
         conn.commit()
 
+    # 迁移：sessions 加机型/SN/状态字段（多台相同失败检测 + 会话筛选用）
+    for _col in ("model", "sn", "status"):
+        try:
+            conn.execute(f"SELECT {_col} FROM sessions LIMIT 1")
+        except Exception:
+            conn.execute(f"ALTER TABLE sessions ADD COLUMN {_col} TEXT")
+            conn.commit()
+    # status 默认 open；历史已解决会话（标题带前缀）标 resolved
+    try:
+        conn.execute("UPDATE sessions SET status = 'open' WHERE status IS NULL")
+        conn.execute(
+            "UPDATE sessions SET status = 'resolved' "
+            "WHERE title LIKE '已解决%' AND status = 'open'"
+        )
+        conn.commit()
+    except Exception:
+        pass
+
+    # 迁移：anomaly_events 表（多台相同失败检测，按机型+错误模式+时间聚合）
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS anomaly_events (
+            id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            model       TEXT,
+            pattern     TEXT NOT NULL,
+            session_id  TEXT,
+            seen_at     TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_anomaly_model_pattern "
+        "ON anomaly_events(model, pattern, seen_at)"
+    )
+    conn.commit()
+
+    # 迁移：repair_templates 表（维修操作模板库，从已解决案例聚合常用动作）
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS repair_templates (
+            id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            model      TEXT NOT NULL DEFAULT '',
+            text       TEXT NOT NULL,
+            count      INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_repair_templates_model "
+        "ON repair_templates(model, count DESC)"
+    )
+    conn.commit()
+
+    # 迁移：case_feedback 表（案例反馈，有用/无关，先收集后续优化检索）
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS case_feedback (
+            id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            filename   TEXT NOT NULL,
+            helpful    INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    conn.commit()
+
     # 同步环境变量到数据库
     # 只更新用户未手动设置过的配置
     env_defaults = [

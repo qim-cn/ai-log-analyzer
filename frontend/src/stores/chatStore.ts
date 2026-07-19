@@ -3,7 +3,7 @@
  */
 
 import { create } from 'zustand';
-import type { Message } from '@/types';
+import type { Message, CaseRef } from '@/types';
 import { messageService, sendMessage } from '@/services';
 import { useSessionStore } from './sessionStore';
 
@@ -72,9 +72,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       let fullContent = '';
       let hasStartedContent = false;
+      let refs: CaseRef[] = [];
 
       for await (const chunk of sendMessage(sessionId, content, signal)) {
         if (chunk.error) throw new Error(chunk.error);
+
+        if ((chunk as { refs?: CaseRef[] }).refs) {
+          refs = (chunk as { refs?: CaseRef[] }).refs!;
+          continue;
+        }
 
         if (chunk.status === 'thinking') {
           set({ thinkingMessage: chunk.message || '正在思考...' });
@@ -106,6 +112,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         role: 'assistant',
         content: fullContent,
         created_at: new Date().toISOString(),
+        refs: refs.length ? refs : undefined,
       };
 
       set((state) => ({

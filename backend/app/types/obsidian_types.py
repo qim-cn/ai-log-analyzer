@@ -11,10 +11,16 @@ class SaveNoteRequest(BaseModel):
     model: str = ""             # 机型（子目录），如 7500S, 7DPC
     log_summary: str = ""
     log_snippet: str = ""
-    analysis: str
+    analysis: str = ""
     repair_notes: str = ""      # 用户填写的实际维修操作过程
     session_id: str = ""        # 关联的会话ID，保存时自动标记已解决
     resolved: bool = False
+    body: str = ""              # 前端组装好的笔记正文（6 段结构）；非空则直接落盘
+
+
+class CompileDraftRequest(BaseModel):
+    """编译案例草稿请求：从整段对话+日志整理成结构化草稿"""
+    session_id: str
 
 
 class ObsidianSettingsResponse(BaseModel):

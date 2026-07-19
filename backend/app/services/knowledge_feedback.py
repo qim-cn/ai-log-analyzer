@@ -35,7 +35,7 @@ class KnowledgeFeedback:
             # 从用户提问中提取关键词
             keywords = self._extract_keywords(query)
             if not keywords:
-                return ""
+                return "", []
 
             # 搜索知识库
             results = []
@@ -53,7 +53,7 @@ class KnowledgeFeedback:
                     unique_results.append(r)
 
             if not unique_results:
-                return ""
+                return "", []
 
             # 生成注入文本
             parts = ["\n## 历史参考案例\n"]
@@ -70,11 +70,15 @@ class KnowledgeFeedback:
                 parts.append("")
 
             logger.info(f"知识反哺: 找到 {len(unique_results)} 条相关记录")
-            return "\n".join(parts)
+            refs = [
+                {"filename": r.get("filename", ""), "title": r.get("title", r.get("filename", "")), "snippet": (r.get("snippet", "") or "")[:200]}
+                for r in unique_results[:3]
+            ]
+            return "\n".join(parts), refs
 
         except Exception as e:
             logger.warning(f"知识反哺搜索失败: {e}")
-            return ""
+            return "", []
 
     def _extract_keywords(self, text: str) -> list[str]:
         """从文本中提取关键词"""

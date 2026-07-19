@@ -17,10 +17,12 @@ from app.middlewares.error_handler import ValidationError
 from app.models.user import UserRole
 from app.services.obsidian_service import obsidian_service
 from app.types.obsidian_types import (
+    CompileDraftRequest,
     ObsidianSettingsResponse,
     SaveNoteRequest,
     UpdateObsidianSettingsRequest,
 )
+from app.utils.auth import require_session_owner as _require_session_owner
 
 router = APIRouter()
 
@@ -40,8 +42,8 @@ async def save_note(body: SaveNoteRequest, request: Request):
     """
     if not body.title:
         raise ValidationError("标题不能为空")
-    if not body.analysis:
-        raise ValidationError("分析结果不能为空")
+    if not body.analysis and not body.body:
+        raise ValidationError("分析结果或正文不能为空")
 
     user = request.state.user
     # 如果前端没传日志，从数据库根据 session_id 补
@@ -69,19 +71,39 @@ async def save_note(body: SaveNoteRequest, request: Request):
         repair_notes=body.repair_notes,
         user=user.username,
         resolved=body.resolved,
+        body=body.body,
     )
 
-    if result["success"]:
-        # 保存成功 → 标记会话为已解决
-        if body.session_id:
-            try:
-                from app.services.session_service import session_service as _ss2
-                _ss2.update_title(body.session_id, f"已解决 - {body.title}")
-            except Exception:
-                pass
+    if result["success"] and body.session_id:
+        # 保存为已解决 -> status=resolved + 标题加一次前缀；未解决 -> status=open，不动标题
+        try:
+            from app.services.session_service import session_service as _ss2
+            if body.resolved:
+                _ss2.update_status(body.session_id, "resolved")
+                existing = _ss2.get_session(body.session_id)
+                if existing and not existing.title.startswith("已解决"):
+                    _ss2.update_title(body.session_id, f"已解决 - {body.title}")
+                # 增量更新维修操作模板库
+                try:
+                    from app.services.repair_template_service import repair_template_service
+                    repair_template_service.record_from_body(body.model, body.body)
+                except Exception:
+                    pass
+            else:
+                _ss2.update_status(body.session_id, "open")
+        except Exception:
+            pass
         return {"code": 0, "message": result["message"], "data": result}
     else:
         raise ValidationError(result["message"])
+
+
+@router.post("/compile-draft", response_model=dict)
+async def compile_draft(body: CompileDraftRequest, request: Request):
+    """从整段对话+日志编译结构化案例草稿（6 段：原始日志/故障原因/AI建议/DEBUG诊断/定位过程/维修操作）"""
+    _require_session_owner(body.session_id, request.state.user)
+    draft = await obsidian_service.compile_case_draft(body.session_id)
+    return {"code": 0, "data": draft}
 
 
 @router.get("/notes", response_model=dict)
@@ -312,3 +334,19 @@ async def delete_resolved_file(filename: str, request: Request):
         return {"code": 0, "message": "已删除", "data": None}
     except Exception as e:
         return {"code": 500, "message": f"删除失败: {e}", "data": None}
+
+@router.post("/feedback", response_model=dict)
+async def case_feedback(body: dict, request: Request):
+    """案例反馈（有用/无关），先收集，后续用于优化检索排序"""
+    filename = body.get("filename", "").strip()
+    if not filename:
+        raise ValidationError("filename 不能为空")
+    helpful = 1 if body.get("helpful") else 0
+    from app.config.database import get_connection
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO case_feedback (filename, helpful) VALUES (?, ?)",
+        (filename, helpful),
+    )
+    conn.commit()
+    return {"code": 0, "message": "已记录反馈"}

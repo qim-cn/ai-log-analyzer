@@ -228,10 +228,10 @@ def search_resolved(query: str, limit: int = 3) -> list[dict]:
     return results[:limit]
 
 
-def feed_known_pattern(log_text: str) -> None:
+def feed_known_pattern(log_text: str, session_id: str | None = None) -> None:
     """
     从用户上传的日志中提取错误模式，存入 error_patterns 表
-    用于后续本地分析匹配
+    用于后续本地分析匹配。session_id 非空时同步记 anomaly_events（多台相同失败检测）。
     """
     conn = get_connection()
 
@@ -249,6 +249,14 @@ def feed_known_pattern(log_text: str) -> None:
         r'|(?:smart.*fail)|(?:link.*down)',
         log_text, re.IGNORECASE,
     )
+
+    anomaly = None
+    if session_id:
+        try:
+            from app.services.anomaly_service import anomaly_service
+            anomaly = anomaly_service
+        except Exception:
+            anomaly = None
 
     for pattern in set(keywords + fail_lines[:20]):
         pattern_clean = pattern.strip()
@@ -270,4 +278,10 @@ def feed_known_pattern(log_text: str) -> None:
                 "INSERT INTO error_patterns (pattern, description, severity, count) VALUES (?, ?, ?, 1)",
                 (pattern_clean, f"从日志自动提取: {pattern_clean}", severity),
             )
+        # 记 anomaly_event（带 session_id，机型由 record_event 从会话解析）
+        if anomaly:
+            try:
+                anomaly.record_event(session_id, pattern_clean)
+            except Exception:
+                pass
     conn.commit()

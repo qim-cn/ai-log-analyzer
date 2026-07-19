@@ -63,6 +63,9 @@ def test_get_error_lines_only_filters_errors():
         file_size=100,
         line_count=4,
         content="INFO: start\nERROR: something broke\nWARN: caution\nFATAL: crash",
+        disk_path=None,
+        summary=None,
+        created_at="2026-07-18T00:00:00Z",
     )
     result = service.get_error_lines_only(log_file, max_lines=10)
     assert "ERROR" in result
@@ -82,6 +85,9 @@ def test_get_error_lines_only_truncates():
         file_size=100,
         line_count=10,
         content=content,
+        disk_path=None,
+        summary=None,
+        created_at="2026-07-18T00:00:00Z",
     )
     result = service.get_error_lines_only(log_file, max_lines=3)
     lines = result.split("\n")

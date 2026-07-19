@@ -178,6 +178,77 @@ def _sanitize_filename(title: str) -> str:
     return safe.strip()
 
 
+COMPILE_CASE_PROMPT = """你是产线故障案例整理助手。把下面这段产线测试诊断对话和日志，整理成一个"已解决故障案例"。
+
+严格按以下格式输出，每段以 ===段名=== 开头，段与段之间用空行分隔，不要任何额外说明或前后缀：
+
+===原始日志===
+<从日志里摘出关键错误行/关键字段，保留原样，不要编造>
+
+===故障原因===
+<故障部件 + 根因判定，1-3 句>
+
+===AI建议===
+<AI 给出的排查/维修方向建议，用编号列表（1. 2. 3.），每条一个独立方向，不要 == 标记>
+
+===DEBUG诊断===
+<用到的 Linux 诊断命令，每条一行，不要 == 标记、不要反引号>
+
+===定位过程===
+<排查定位的步骤，简明分步>
+
+===维修操作===
+<若对话里明确提到实际修复动作（如用户反馈"换件后通过""重插拔好了""重跑 PASS"等），则如实填入；否则留空，由工程师补填>
+
+对话：
+{conversation}
+
+日志：
+{log}
+"""
+
+
+def _parse_case_sections(text: str) -> dict:
+    """解析 AI 输出的 ===段名=== 结构为 6 段 dict。"""
+    mapping = {
+        "原始日志": "log",
+        "故障原因": "cause",
+        "AI建议": "suggestion",
+        "DEBUG诊断": "debug",
+        "定位过程": "process",
+        "维修操作": "repair",
+    }
+    result = {k: "" for k in mapping.values()}
+    parts = re.split(r"={2,}\s*([^=\n]+?)\s*={2,}", text)
+    i = 1
+    while i + 1 < len(parts):
+        key = mapping.get(parts[i].strip())
+        if key:
+            result[key] = parts[i + 1].strip()
+        i += 2
+    return result
+
+
+def _wrap_resolved_note(title: str, model: str, now: str, user: str, body: str) -> str:
+    """用 frontmatter 包裹前端组装好的正文，落盘到已解决案例。"""
+    model_line = model or "未分类"
+    return f"""---
+model: {model_line}
+title: {title}
+date: {now}
+user: {user}
+type: resolved
+tags:
+  - resolved
+  - {model_line}
+---
+
+# [{model_line}] {title}
+
+{body}
+"""
+
+
 def generate_note_content(
     title: str,
     model: str,
@@ -186,9 +257,15 @@ def generate_note_content(
     analysis: str,
     repair_notes: str = "",
     user: str = "admin",
+    body: str = "",
 ) -> str:
-    """生成已解决的笔记内容。repair_notes 为用户填写，没有则用 AI 分析结果"""
+    """生成已解决的笔记内容。
+    - body 非空：直接用前端组装好的正文（6 段结构），只包 frontmatter；
+    - 否则：按 analysis 关键词切分（旧逻辑）。
+    """
     now = datetime.utcnow().isoformat() + "Z"
+    if body:
+        return _wrap_resolved_note(title, model, now, user, body)
     sections = parse_analysis(analysis)
 
     # 提取日志关键字段（前 10 行非空行）
@@ -553,18 +630,67 @@ class ObsidianService:
         repair_notes: str = "",
         user: str = "admin",
         resolved: bool = False,
+        body: str = "",
     ) -> dict:
-        """保存笔记。resolved=True → 写入本地。repair_notes 由用户填写"""
+        """保存笔记。resolved=True -> 写入本地。body 非空则直接落盘正文，repair_notes 由用户填写"""
         if resolved:
-            return self._save_resolved_local(title, save_path, log_summary, log_snippet, analysis, repair_notes, user)
+            return self._save_resolved_local(title, save_path, log_summary, log_snippet, analysis, repair_notes, user, body)
         if self._is_webdav_configured():
             return await self._save_note_webdav(title, save_path, log_summary, log_snippet, analysis, repair_notes, user, False)
         else:
             return self._local_save_note(title, save_path, log_summary, log_snippet, analysis, repair_notes, user, False)
 
+    async def compile_case_draft(self, session_id: str) -> dict:
+        """编译整段对话+日志为结构化案例草稿（6 段）。AI 不可用则回退启发式。"""
+        from app.services.log_service import log_service
+        from app.services.message_service import message_service
+
+        messages = message_service.get_messages(session_id)
+        log_summary = log_service.get_logs_summary_for_session(session_id)
+
+        convo = "\n\n".join(
+            f"[{m.role.value}]\n{m.content}" for m in messages
+        ) or "(无对话内容)"
+
+        try:
+            from app.services.ai_service import ai_service
+            prompt = COMPILE_CASE_PROMPT.format(
+                conversation=convo[:12000], log=log_summary or "(无日志)"
+            )
+            result = await ai_service.chat(
+                [
+                    {"role": "system", "content": "你是产线故障案例整理助手，只按指定格式输出。"},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+            )
+            sections = _parse_case_sections(result)
+            logger.info("案例草稿 AI 编译完成")
+        except Exception as e:
+            logger.warning(f"AI 编译草稿失败，回退启发式: {e}")
+            sections = self._heuristic_case_sections(messages, log_summary)
+
+        # 维修操作：保留 AI 从对话里提取的实际修复动作（若有）；对话里没提到则留空，
+        # 由前端防呆面板引导工程师勾选/补填。不再强制清空。
+        sections["success"] = True
+        return sections
+
+    def _heuristic_case_sections(self, messages: list, log_summary: str) -> dict:
+        """AI 不可用时的启发式切分：把所有 AI 回复拼起来按 parse_analysis 切。"""
+        ai_text = "\n\n".join(m.content for m in messages if m.role.value == "assistant")
+        sections = parse_analysis(ai_text)
+        return {
+            "log": log_summary or sections.get("summary", ""),
+            "cause": sections.get("cause", ""),
+            "suggestion": sections.get("solution", ""),
+            "debug": "",
+            "process": sections.get("method", ""),
+            "repair": "",
+        }
+
     def _save_resolved_local(
         self, title: str, save_path: str, log_summary: str, log_snippet: str,
-        analysis: str, repair_notes: str = "", user: str = "admin",
+        analysis: str, repair_notes: str = "", user: str = "admin", body: str = "",
     ) -> dict:
         """已解决 → /resolved/{resolved_path}/{save_path}/{标题}.md"""
         config = _get_settings()
@@ -580,7 +706,7 @@ class ObsidianService:
 
         content = generate_note_content(
             title=title, model=clean_path, log_summary=log_summary, log_snippet=log_snippet,
-            analysis=analysis, repair_notes=repair_notes, user=user,
+            analysis=analysis, repair_notes=repair_notes, user=user, body=body,
         )
 
         file_path = target_dir / filename

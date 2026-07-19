@@ -14,8 +14,8 @@ interface SessionState {
   searchResults: Session[];
 
   // Actions
-  fetchSessions: () => Promise<void>;
-  createSession: (title?: string) => Promise<Session>;
+  fetchSessions: (filters?: { model?: string; status?: string; q?: string }) => Promise<void>;
+  createSession: (title?: string, model?: string, sn?: string) => Promise<Session>;
   deleteSession: (id: string) => Promise<void>;
   renameSession: (id: string, title: string) => Promise<void>;
   setCurrentSession: (id: string | null) => void;
@@ -29,18 +29,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   searchQuery: '',
   searchResults: [],
 
-  fetchSessions: async () => {
+  fetchSessions: async (filters) => {
     set({ loading: true });
     try {
-      const data = await sessionService.list();
+      const data = await sessionService.list(filters);
       set({ sessions: data.sessions });
     } finally {
       set({ loading: false });
     }
   },
 
-  createSession: async (title) => {
-    const session = await sessionService.create(title);
+  createSession: async (title, model, sn) => {
+    const session = await sessionService.create(title, model, sn);
     set((state) => ({
       sessions: [session, ...state.sessions],
       currentSessionId: session.id,
