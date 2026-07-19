@@ -100,6 +100,12 @@ class Settings:
     # 日志存储路径
     log_storage_path: str = "/data/logs"
 
+    # 日志脱敏开关：True 时上传管线在入库前把 IP/手机号/邮箱/token/身份证等
+    # 敏感信息替换为占位符，避免敏感数据随日志内容发送给外部 LLM API。
+    mask_sensitive_data: bool = field(
+        default_factory=lambda: os.getenv("MASK_SENSITIVE_DATA", "true").strip().lower() in ("1", "true", "yes")
+    )
+
     def __post_init__(self):
         self.max_file_size_bytes = self.max_file_size_mb * 1024 * 1024
         self.chunk_threshold_bytes = self.chunk_threshold_mb * 1024 * 1024

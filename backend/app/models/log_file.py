@@ -28,6 +28,7 @@ class LogFile:
     disk_path: str | None  # 大文件存磁盘路径
     summary: str | None  # 大文件摘要
     created_at: str
+    masking_map: str | None = None  # 脱敏映射（JSON：占位符 -> 原始值）
 
     @classmethod
     def from_row(cls, row: dict) -> "LogFile":
@@ -43,6 +44,7 @@ class LogFile:
             disk_path=row["disk_path"],
             summary=row["summary"],
             created_at=row["created_at"],
+            masking_map=row.get("masking_map"),
         )
 
     @property

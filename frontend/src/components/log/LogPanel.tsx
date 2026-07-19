@@ -16,6 +16,7 @@ import { LogUploader } from './LogUploader';
 import { LogFileList } from './LogFileList';
 import { LogViewer } from './LogViewer';
 import { LogStats } from './LogStats';
+import { ErrorClusterPanel } from './ErrorClusterPanel';
 import { SimilarLogsPanel } from './SimilarLogsPanel';
 import { LogTimeline } from './LogTimeline';
 import { useLogStore, useChatStore } from '@/stores';
@@ -143,6 +144,11 @@ export function LogPanel({ sessionId }: LogPanelProps) {
           {/* Stats Panel */}
           {selectedLogId && !selectedLogContent && selectedFile && (
             <LogStats logId={selectedLogId} filename={selectedFile.filename} />
+          )}
+
+          {/* Error Cluster Panel */}
+          {selectedLogId && !selectedLogContent && (
+            <ErrorClusterPanel logId={selectedLogId} />
           )}
 
           {/* Similar Logs Toggle */}

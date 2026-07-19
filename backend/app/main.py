@@ -172,6 +172,7 @@ register_error_handlers(app)
 # ============================================================
 
 from app.routes.anomaly_routes import router as anomaly_router
+from app.routes.error_cluster_routes import router as error_cluster_router
 from app.routes.repair_template_routes import router as repair_template_router
 from app.routes.auth_routes import router as auth_router
 from app.routes.audit_routes import router as audit_router
@@ -199,6 +200,7 @@ app.include_router(session_router, prefix="/api/sessions", tags=["会话管理"]
 app.include_router(message_router, prefix="/api/messages", tags=["消息管理"])
 app.include_router(log_router, prefix="/api/logs", tags=["日志管理"])
 app.include_router(compare_router, prefix="/api/logs", tags=["日志对比"])
+app.include_router(error_cluster_router, prefix="/api/logs", tags=["错误聚类"])
 app.include_router(chat_router, prefix="/api/chat", tags=["AI 对话"])
 app.include_router(settings_router, prefix="/api/settings", tags=["配置管理"])
 app.include_router(knowledge_router, prefix="/api/knowledge", tags=["知识图谱"])

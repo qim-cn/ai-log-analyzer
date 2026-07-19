@@ -22,6 +22,7 @@ class LogRepository:
         content: str | None = None,
         disk_path: str | None = None,
         summary: str | None = None,
+        masking_map: str | None = None,
     ) -> LogFile:
         """创建日志文件记录"""
         conn = get_connection()
@@ -31,10 +32,10 @@ class LogRepository:
         conn.execute(
             """INSERT INTO log_files
                (id, session_id, filename, file_type, file_size, line_count,
-                content, disk_path, summary, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                content, disk_path, summary, masking_map, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (log_id, session_id, filename, file_type.value, file_size,
-             line_count, content, disk_path, summary, now),
+             line_count, content, disk_path, summary, masking_map, now),
         )
         conn.commit()
 
@@ -49,6 +50,7 @@ class LogRepository:
             disk_path=disk_path,
             summary=summary,
             created_at=now,
+            masking_map=masking_map,
         )
 
     def get_by_id(self, log_id: str) -> LogFile | None:
