@@ -2,7 +2,7 @@
 MaskingService 单元测试
 """
 
-from app.services.masking_service import LogMasker, MaskingService
+from app.services.masking_service import LogMasker, MaskingService, summarize_mapping
 
 
 def _mask(text: str):
@@ -105,3 +105,23 @@ def test_password_like_kv_masked_but_key_kept():
     masked, _ = _mask('connect failed: host=db01 password="S3cret!pass"')
     assert "S3cret!pass" not in masked
     assert "password=" in masked
+
+
+def test_summarize_mapping_counts_by_category():
+    mapping = {
+        "[IP_1]": "192.168.1.1",
+        "[IP_2]": "10.0.0.1",
+        "[PHONE_1]": "13812345678",
+        "[EMAIL_1]": "a@b.com",
+    }
+    stats = summarize_mapping(mapping)
+    assert stats == {"IP": 2, "PHONE": 1, "EMAIL": 1}
+
+
+def test_summarize_mapping_empty():
+    assert summarize_mapping({}) == {}
+
+
+def test_summarize_mapping_unknown_placeholder():
+    stats = summarize_mapping({"not-a-placeholder": "x"})
+    assert stats == {"OTHER": 1}

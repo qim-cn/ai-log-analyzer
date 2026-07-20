@@ -1,24 +1,32 @@
 /**
  * 错误聚类面板
  * 把刷屏的报错按归一化模式归组，按次数降序展示，
- * 可展开查看原始样例行和首末出现时间
+ * 可展开查看原始样例行和首末出现时间；
+ * 每个聚类支持"问 AI"（发送聚类信息请 AI 分析根因）
+ * 和"分析该时段"（按首末出现时间切取日志片段请 AI 分析）
  */
 
 import { useEffect, useState } from 'react';
-import { Layers, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Layers, ChevronDown, ChevronUp, Loader2, Send, Clock } from 'lucide-react';
 import { errorClusterService, type ErrorCluster } from '@/services/errorClusterService';
-import { cn } from '@/utils';
+import { logService } from '@/services';
+import { cn, sendPromptToChat } from '@/utils';
 
 interface ErrorClusterPanelProps {
   logId: string;
+  sessionId?: string;
 }
 
-export function ErrorClusterPanel({ logId }: ErrorClusterPanelProps) {
+/** 发送给 AI 的日志片段最大行数（超出只带前若干行并说明） */
+const MAX_SLICE_LINES_IN_PROMPT = 100;
+
+export function ErrorClusterPanel({ logId, sessionId }: ErrorClusterPanelProps) {
   const [clusters, setClusters] = useState<ErrorCluster[]>([]);
   const [totalErrorLines, setTotalErrorLines] = useState(0);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [openSample, setOpenSample] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const fetchClusters = async () => {
@@ -43,6 +51,68 @@ export function ErrorClusterPanel({ logId }: ErrorClusterPanelProps) {
       else next.add(index);
       return next;
     });
+  };
+
+  // 功能：错误聚类一键问 AI
+  const handleAskAI = async (cluster: ErrorCluster) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const timeInfo =
+        cluster.first_seen || cluster.last_seen
+          ? `（首次: ${cluster.first_seen || '未知'}，最后: ${cluster.last_seen || '未知'}）`
+          : '';
+      const prompt = [
+        `日志中有一个错误聚类刷屏，请分析根因和排查方向：`,
+        ``,
+        `- 归一化模式：\`${cluster.pattern}\``,
+        `- 出现次数：${cluster.count} 次，占全部错误行的 ${(cluster.ratio * 100).toFixed(1)}%${timeInfo}`,
+        `- 原始样例行：`,
+        '```',
+        cluster.sample,
+        '```',
+      ].join('\n');
+      await sendPromptToChat(sessionId, prompt);
+    } catch (err) {
+      console.error('发送失败:', err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // 功能：按聚类的首末出现时间切取日志片段，发给 AI 分析该时段
+  const handleAnalyzeWindow = async (cluster: ErrorCluster) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const start = cluster.first_seen || undefined;
+      const end = cluster.last_seen || undefined;
+      const slice = await logService.getContentSlice(logId, start, end);
+      if (!slice.content) {
+        console.warn('该时间窗内没有日志内容');
+        return;
+      }
+      const lines = slice.content.split('\n');
+      const capped = lines.length > MAX_SLICE_LINES_IN_PROMPT;
+      const body = capped
+        ? lines.slice(0, MAX_SLICE_LINES_IN_PROMPT).join('\n')
+        : slice.content;
+      const prompt = [
+        `以下是 ${start || '开头'} ~ ${end || '结尾'} 时间窗内的日志片段`,
+        `（命中 ${slice.matched_lines} 行${slice.truncated ? '，切片过大已被服务端截断' : ''}${capped ? `，仅带前 ${MAX_SLICE_LINES_IN_PROMPT} 行` : ''}）：`,
+        ``,
+        '```',
+        body,
+        '```',
+        ``,
+        `请分析这个时段内发生了什么、主要错误和排查方向。`,
+      ].join('\n');
+      await sendPromptToChat(sessionId, prompt);
+    } catch (err) {
+      console.error('分析时间窗失败:', err);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -91,6 +161,35 @@ export function ErrorClusterPanel({ logId }: ErrorClusterPanelProps) {
                   <span className="flex-1 min-w-0 text-xs font-mono truncate text-muted-foreground">
                     {cluster.pattern}
                   </span>
+
+                  {/* 问 AI */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAskAI(cluster);
+                    }}
+                    disabled={busy}
+                    className="shrink-0 p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary disabled:opacity-40"
+                    title="问 AI：分析该聚类的根因和排查方向"
+                  >
+                    <Send size={12} />
+                  </button>
+
+                  {/* 分析该时段（有首末时间才可用） */}
+                  {(cluster.first_seen || cluster.last_seen) && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAnalyzeWindow(cluster);
+                      }}
+                      disabled={busy}
+                      className="shrink-0 p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary disabled:opacity-40"
+                      title="分析该时段：按首末出现时间切取日志片段发给 AI"
+                    >
+                      <Clock size={12} />
+                    </button>
+                  )}
+
                   {openSample.has(index) ? (
                     <ChevronUp size={12} className="shrink-0 text-muted-foreground" />
                   ) : (

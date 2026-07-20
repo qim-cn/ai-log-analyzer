@@ -5,6 +5,7 @@ Log 路由定义
 上传时自动生成结构化摘要和嵌入向量。
 """
 
+import json
 import logging
 from fastapi import APIRouter, Request, UploadFile
 
@@ -17,6 +18,7 @@ from app.services.cluster_service import cluster_service
 from app.utils.auth import require_log_owner as _require_log_owner, require_session_owner as _require_session_owner
 from app.services.knowledge_graph import knowledge_graph
 from app.services.log_service import log_service
+from app.services.masking_service import summarize_mapping
 from app.services.vector_store import vector_store
 from app.types.log_types import (
     LogFileListResponse,
@@ -119,6 +121,7 @@ async def upload_log(session_id: str, file: UploadFile, request: Request):
             disk_path=None,
             summary=log_file.summary,
             created_at=log_file.created_at,
+            has_masking_map=bool(log_file.masking_map),
         ),
     }
 
@@ -144,6 +147,7 @@ async def list_logs(session_id: str, request: Request):
                     disk_path=None,
                     summary=f.summary,
                     created_at=f.created_at,
+                    has_masking_map=bool(f.masking_map),
                 )
                 for f in files
             ]
@@ -180,6 +184,64 @@ async def get_log_statistics(log_id: str, request: Request):
             key_alerts=stats.key_alerts,
             detected_format=stats.detected_format,
         ),
+    }
+
+
+@router.get("/{log_id}/masking-map", response_model=dict)
+async def get_masking_map(log_id: str, request: Request):
+    """
+    获取日志文件的脱敏映射（占位符 -> 原始值）和每类数量统计
+
+    用于用户确认脱敏是否正确、有没有误伤；未脱敏的日志返回空结构。
+    """
+    _require_log_owner(log_id, request.state.user)
+    lf = log_repository.get_by_id(log_id)
+    if lf is None:
+        raise ValidationError("日志文件不存在")
+
+    mapping: dict = {}
+    if lf.masking_map:
+        try:
+            mapping = json.loads(lf.masking_map)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(f"日志 {log_id} 的 masking_map 解析失败")
+            mapping = {}
+
+    return {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "mapping": mapping,
+            "stats": summarize_mapping(mapping),
+            "total": len(mapping),
+        },
+    }
+
+
+@router.get("/{log_id}/content-slice", response_model=dict)
+async def get_content_slice(
+    log_id: str,
+    request: Request,
+    start: str | None = None,
+    end: str | None = None,
+):
+    """
+    按行内时间戳切取时间窗内的日志内容（用于大文件分时段分析）
+
+    - start/end 与行内时间戳同格式（ISO 等），缺省表示不限
+    - 无时间戳的行作为上一条时间戳行的延续处理
+    - 最多返回 5000 行 / 200KB，超出截断并置 truncated 标记
+    """
+    _require_log_owner(log_id, request.state.user)
+    lf = log_repository.get_by_id(log_id)
+    if lf is None:
+        raise ValidationError("日志文件不存在")
+
+    result = log_service.get_content_slice(lf, start=start, end=end)
+    return {
+        "code": 0,
+        "message": "success",
+        "data": result,
     }
 
 

@@ -18,6 +18,7 @@ class LogFileResponse(BaseModel):
     disk_path: str | None
     summary: str | None
     created_at: str
+    has_masking_map: bool = False
 
 
 class LogFileListResponse(BaseModel):

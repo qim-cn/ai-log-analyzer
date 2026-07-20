@@ -21,6 +21,7 @@ from app.config.settings import settings
 from app.middlewares.error_handler import ValidationError
 from app.models.log_file import LogFile, LogFileType
 from app.repositories.log_repository import log_repository
+from app.services.error_cluster_service import extract_timestamp
 from app.services.masking_service import masking_service
 from app.utils.log_parser import (
     LogStatistics,
@@ -277,6 +278,81 @@ class LogService:
         if len(error_lines) > max_lines:
             error_lines = error_lines[:max_lines] + [f"... (共 {len(error_lines)} 行错误)"]
         return "\n".join(error_lines)
+
+    def get_content_slice(
+        self,
+        log_file: LogFile,
+        start: str | None = None,
+        end: str | None = None,
+        max_lines: int = 5000,
+        max_chars: int = 200 * 1024,
+    ) -> dict:
+        """按行内时间戳切取时间窗内的日志内容
+
+        - start/end 与行内时间戳同格式（ISO 等），字典序比较；缺省表示不限。
+        - 行内无时间戳的行视为上一条时间戳行的延续（如堆栈行），
+          处于窗口内则保留，窗口外则跳过。
+        - 超过 max_lines / max_chars 截断并置 truncated 标记。
+
+        Returns:
+            {content, matched_lines, total_lines, truncated, start, end}
+        """
+        # 取行源：DB 小文件直接切分；磁盘文件流式逐行读，避免整文件进内存
+        if log_file.content:
+            line_iter = iter(log_file.content.split("\n"))
+        elif log_file.disk_path and Path(log_file.disk_path).exists():
+            line_iter = self._iter_file_lines(log_file.disk_path)
+        else:
+            return {
+                "content": "",
+                "matched_lines": 0,
+                "total_lines": 0,
+                "truncated": False,
+                "start": start,
+                "end": end,
+            }
+
+        kept: list[str] = []
+        total_lines = 0
+        matched_lines = 0
+        chars = 0
+        truncated = False
+        in_window = False
+
+        for line in line_iter:
+            if not line.strip():
+                continue
+            total_lines += 1
+            ts = extract_timestamp(line)
+            if ts is not None:
+                in_window = (start is None or ts >= start) and (end is None or ts <= end)
+            # 无时间戳的行沿用上一行的窗口状态（延续行归并策略）
+            if not in_window:
+                continue
+            matched_lines += 1
+            if len(kept) >= max_lines or chars + len(line) + 1 > max_chars:
+                truncated = True
+                continue
+            kept.append(line)
+            chars += len(line) + 1
+
+        content = "\n".join(kept)
+        if truncated:
+            content += f"\n... (切片过大已截断，仅保留前 {len(kept)} 行 / {max_chars // 1024}KB)"
+        return {
+            "content": content,
+            "matched_lines": matched_lines,
+            "total_lines": total_lines,
+            "truncated": truncated,
+            "start": start,
+            "end": end,
+        }
+
+    def _iter_file_lines(self, file_path: str):
+        """逐行读取磁盘日志文件"""
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                yield line.rstrip("\n")
 
     def _read_head_tail(self, file_path: str, max_chars: int) -> str:
         half = max_chars // 2

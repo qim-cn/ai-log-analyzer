@@ -8,6 +8,7 @@ import { LogOut, Users, BookOpen, LayoutDashboard } from 'lucide-react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { ChatPanel } from '@/components/chat/ChatPanel';
+import { LogPanel } from '@/components/log/LogPanel';
 import { KnowledgeBasePanel } from '@/components/knowledge/KnowledgeBasePanel';
 import { SettingsDialog } from '@/components/settings/SettingsDialog';
 import { ToastProvider } from '@/components/ui/Toast';
@@ -27,6 +28,8 @@ export function MainLayout({ currentUser, onLogout, onOpenUsers, onOpenKnowledge
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [knowledgePanelOpen, setKnowledgePanelOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 右侧面板：日志（上传/统计/错误聚类）与 Debug 命令 两个 tab
+  const [rightTab, setRightTab] = useState<'logs' | 'commands'>('logs');
 
   const currentSessionId = useSessionStore((s) => s.currentSessionId);
 
@@ -125,10 +128,32 @@ export function MainLayout({ currentUser, onLogout, onOpenUsers, onOpenKnowledge
             )}
           </main>
 
-          {/* 右侧知识库面板 */}
+          {/* 右侧面板：日志分析 / Debug 命令 */}
           {currentSessionId && knowledgePanelOpen && (
             <aside className="w-80 border-l border-border shrink-0 hidden md:flex flex-col">
-              <KnowledgeBasePanel />
+              <div className="flex border-b border-border px-3 gap-1 shrink-0">
+                {(['logs', 'commands'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setRightTab(t)}
+                    className={cn(
+                      'px-3 py-2 text-xs font-medium border-b-2 transition-colors',
+                      rightTab === t
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {t === 'logs' ? '日志' : '命令'}
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1 overflow-hidden">
+                {rightTab === 'logs' ? (
+                  <LogPanel sessionId={currentSessionId} />
+                ) : (
+                  <KnowledgeBasePanel />
+                )}
+              </div>
             </aside>
           )}
         </div>
