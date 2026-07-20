@@ -47,7 +47,10 @@ export function MainLayout({ currentUser, onLogout, onOpenUsers, onOpenKnowledge
         <Header
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           onToggleLogPanel={() => setKnowledgePanelOpen(!knowledgePanelOpen)}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={
+            // 设置入口仅管理员可见
+            currentUser?.role === 'admin' ? () => setSettingsOpen(true) : undefined
+          }
         />
 
         <div className="flex-1 flex overflow-hidden relative">
