@@ -7,4 +7,3 @@ export * from './obsidian';
 export * from './template';
 export * from './knowledge';
 export * from './anomaly';
-export * from './timeline';

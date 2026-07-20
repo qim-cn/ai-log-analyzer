@@ -2,13 +2,12 @@
  * 右侧日志面板
  * 显示当前会话关联的日志文件列表，点击查看内容
  * 支持点击行追加引用、右键分析选中内容
- * 显示相似历史日志、时间线、分析向导
+ * 显示日志统计、脱敏映射入口、错误聚类、相似历史日志
  */
 
 import { useEffect, useCallback, useState } from 'react';
 import {
   FileText,
-  Clock,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
@@ -19,18 +18,13 @@ import { LogStats } from './LogStats';
 import { ErrorClusterPanel } from './ErrorClusterPanel';
 import { MaskingMapButton } from './MaskingMapButton';
 import { SimilarLogsPanel } from './SimilarLogsPanel';
-import { LogTimeline } from './LogTimeline';
 import { useLogStore, useChatStore } from '@/stores';
-import { cn } from '@/utils/cn';
-
-type PanelTab = 'files' | 'timeline';
 
 interface LogPanelProps {
   sessionId: string;
 }
 
 export function LogPanel({ sessionId }: LogPanelProps) {
-  const [activeTab, setActiveTab] = useState<PanelTab>('files');
   const [showSimilar, setShowSimilar] = useState(false);
 
   const {
@@ -73,7 +67,7 @@ export function LogPanel({ sessionId }: LogPanelProps) {
 
   return (
     <div className="h-full flex flex-col bg-card">
-      {/* Header with Tabs */}
+      {/* Header */}
       <div className="border-b border-border">
         <div className="px-3 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -84,39 +78,10 @@ export function LogPanel({ sessionId }: LogPanelProps) {
             </span>
           </div>
         </div>
-
-        {/* Tab Buttons */}
-        <div className="flex px-3 gap-1">
-          <button
-            onClick={() => setActiveTab('files')}
-            className={cn(
-              'px-3 py-1.5 text-xs rounded-t-md transition-colors',
-              activeTab === 'files'
-                ? 'bg-muted text-foreground font-medium'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            <FileText className="inline h-3 w-3 mr-1" />
-            文件
-          </button>
-          <button
-            onClick={() => setActiveTab('timeline')}
-            className={cn(
-              'px-3 py-1.5 text-xs rounded-t-md transition-colors',
-              activeTab === 'timeline'
-                ? 'bg-muted text-foreground font-medium'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            <Clock className="inline h-3 w-3 mr-1" />
-            时间线
-          </button>
-        </div>
       </div>
 
       {/* Content */}
-      {activeTab === 'files' ? (
-        <>
+      <>
           {/* Upload */}
           <div className="p-3 border-b border-border">
             <LogUploader sessionId={sessionId} />
@@ -178,12 +143,7 @@ export function LogPanel({ sessionId }: LogPanelProps) {
               )}
             </div>
           )}
-        </>
-      ) : (
-        <div className="flex-1 overflow-hidden">
-          <LogTimeline sessionId={sessionId} />
-        </div>
-      )}
+      </>
     </div>
   );
 }
