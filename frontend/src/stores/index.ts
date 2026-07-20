@@ -3,3 +3,4 @@ export * from './chatStore';
 export * from './logStore';
 export * from './settingsStore';
 export * from './themeStore';
+export * from './quickPromptStore';

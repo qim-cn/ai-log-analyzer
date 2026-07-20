@@ -17,6 +17,7 @@ import { LogFileList } from './LogFileList';
 import { LogViewer } from './LogViewer';
 import { LogStats } from './LogStats';
 import { ErrorClusterPanel } from './ErrorClusterPanel';
+import { MaskingMapButton } from './MaskingMapButton';
 import { SimilarLogsPanel } from './SimilarLogsPanel';
 import { LogTimeline } from './LogTimeline';
 import { useLogStore, useChatStore } from '@/stores';
@@ -146,9 +147,14 @@ export function LogPanel({ sessionId }: LogPanelProps) {
             <LogStats logId={selectedLogId} filename={selectedFile.filename} />
           )}
 
+          {/* Masking Map Entry（仅有脱敏映射时显示） */}
+          {selectedLogId && !selectedLogContent && selectedFile && (
+            <MaskingMapButton logFile={selectedFile} />
+          )}
+
           {/* Error Cluster Panel */}
           {selectedLogId && !selectedLogContent && (
-            <ErrorClusterPanel logId={selectedLogId} />
+            <ErrorClusterPanel logId={selectedLogId} sessionId={sessionId} />
           )}
 
           {/* Similar Logs Toggle */}

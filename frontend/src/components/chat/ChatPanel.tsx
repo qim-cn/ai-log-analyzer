@@ -12,7 +12,7 @@ import { ThinkingBubble } from './ThinkingBubble';
 import { ChatInput } from './ChatInput';
 import { ExportButton } from '@/components/export/ExportButton';
 import { ComparePanel } from '@/components/compare/ComparePanel';
-import { useChatStore, useSessionStore, useLogStore } from '@/stores';
+import { useChatStore, useSessionStore, useLogStore, useQuickPromptStore } from '@/stores';
 import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE } from '@/constants';
 import { cn, formatFileSize } from '@/utils';
 
@@ -35,6 +35,8 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
   } = useChatStore();
 
   const { logFiles, fetchLogs, uploadLog, uploading } = useLogStore();
+
+  const quickPrompts = useQuickPromptStore((s) => s.prompts);
 
   const sessions = useSessionStore((s) => s.sessions);
   const currentSession = sessions.find((s) => s.id === sessionId);
@@ -210,7 +212,7 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
       {/* Input 区域 */}
       <div className="border-t border-border bg-card/80 backdrop-blur-sm">
         {/* 快捷操作 + 上传按钮 */}
-        <div className="px-4 pt-3 flex items-center gap-2">
+        <div className="px-4 pt-3 flex items-center gap-2 flex-wrap">
           {/* 上传按钮 */}
           <button
             onClick={handleFileUpload}
@@ -229,6 +231,24 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
 
           {/* 保存知识库按钮（紧挨上传日志） */}
           <SaveToKnowledgeButton sessionId={sessionId} disabled={messages.length === 0} />
+
+          {/* 自定义快捷提问（在设置里管理），点击即发送 */}
+          {quickPrompts.map((qp) => (
+            <button
+              key={qp.id}
+              onClick={() => handleSend(qp.prompt)}
+              disabled={streaming}
+              title={qp.prompt}
+              className={cn(
+                'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium',
+                'bg-muted text-muted-foreground whitespace-nowrap',
+                'hover:bg-primary/10 hover:text-primary transition-all duration-150',
+                streaming && 'opacity-50 cursor-not-allowed'
+              )}
+            >
+              {qp.label}
+            </button>
+          ))}
         </div>
 
         {/* 输入框 */}

@@ -9,10 +9,11 @@ import { obsidianService, type FileTreeNode } from '@/services/obsidianService';
 import { RulesPanel } from '@/components/rules/RulesPanel';
 import { AuditPanel } from '@/components/audit/AuditPanel';
 import { WebhooksPanel } from '@/components/webhooks/WebhooksPanel';
+import { QuickPromptsPanel } from './QuickPromptsPanel';
 import { cn } from '@/utils';
 
 interface SettingsDialogProps { open: boolean; onClose: () => void; }
-type SettingsTab = 'ai' | 'obsidian' | 'rules' | 'audit' | 'webhooks';
+type SettingsTab = 'ai' | 'obsidian' | 'rules' | 'audit' | 'webhooks' | 'prompts';
 
 /** 目录浏览器（独立实例） */
 function DirBrowser({ show, onClose, onSelect, btnLabel }: {
@@ -147,10 +148,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         </div>
 
         <div className="flex border-b border-border px-5">
-          {(['ai','obsidian','rules','audit','webhooks'] as const).map(t => (
+          {(['ai','obsidian','rules','audit','webhooks','prompts'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)} className={cn('px-4 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5',
               tab===t?'border-primary text-primary':'border-transparent text-muted-foreground hover:text-foreground')}>
-              {t==='ai'?'AI 配置':t==='obsidian'?<><BookOpen size={14}/>知识库</>:t==='rules'?'告警':t==='audit'?'日志':'通知'}
+              {t==='ai'?'AI 配置':t==='obsidian'?<><BookOpen size={14}/>知识库</>:t==='rules'?'告警':t==='audit'?'日志':t==='webhooks'?'通知':'快捷提问'}
             </button>
           ))}
         </div>
@@ -232,7 +233,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 {savingObsidian ? <Loader2 size={16} className="animate-spin" /> : null} 保存配置
               </button>
             </>
-          ) : tab==='rules' ? <RulesPanel /> : tab==='audit' ? <AuditPanel /> : tab==='webhooks' ? <WebhooksPanel /> : null}
+          ) : tab==='rules' ? <RulesPanel /> : tab==='audit' ? <AuditPanel /> : tab==='webhooks' ? <WebhooksPanel /> : tab==='prompts' ? <QuickPromptsPanel /> : null}
         </div>
 
         <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">

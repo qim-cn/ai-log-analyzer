@@ -9,6 +9,7 @@ export interface LogFile {
   disk_path: string | null;
   summary: string | null;
   created_at: string;
+  has_masking_map?: boolean;
 }
 
 export interface LogStatistics {
