@@ -8,7 +8,6 @@ import { LogOut, Users, BookOpen, LayoutDashboard } from 'lucide-react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { ChatPanel } from '@/components/chat/ChatPanel';
-import { LogPanel } from '@/components/log/LogPanel';
 import { ConversationCommandsPanel } from '@/components/chat/ConversationCommandsPanel';
 import { LinuxKnowledgePanel } from '@/components/knowledge/LinuxKnowledgePanel';
 import { SettingsDialog } from '@/components/settings/SettingsDialog';
@@ -29,8 +28,8 @@ export function MainLayout({ currentUser, onLogout, onOpenUsers, onOpenKnowledge
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [knowledgePanelOpen, setKnowledgePanelOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // 右侧面板三个 tab：日志（上传/统计/错误聚类）/ 对话命令 / Linux命令
-  const [rightTab, setRightTab] = useState<'logs' | 'commands' | 'linux'>('logs');
+  // 右侧面板两个 tab：对话命令 / Linux命令
+  const [rightTab, setRightTab] = useState<'commands' | 'linux'>('commands');
 
   const currentSessionId = useSessionStore((s) => s.currentSessionId);
 
@@ -129,11 +128,11 @@ export function MainLayout({ currentUser, onLogout, onOpenUsers, onOpenKnowledge
             )}
           </main>
 
-          {/* 右侧面板：日志 / 对话命令 / Linux命令 */}
+          {/* 右侧面板：对话命令 / Linux命令 */}
           {currentSessionId && knowledgePanelOpen && (
             <aside className="w-80 border-l border-border shrink-0 hidden md:flex flex-col">
               <div className="flex border-b border-border px-3 gap-1 shrink-0">
-                {(['logs', 'commands', 'linux'] as const).map((t) => (
+                {(['commands', 'linux'] as const).map((t) => (
                   <button
                     key={t}
                     onClick={() => setRightTab(t)}
@@ -144,14 +143,12 @@ export function MainLayout({ currentUser, onLogout, onOpenUsers, onOpenKnowledge
                         : 'border-transparent text-muted-foreground hover:text-foreground'
                     )}
                   >
-                    {t === 'logs' ? '日志' : t === 'commands' ? '对话命令' : 'Linux命令'}
+                    {t === 'commands' ? '对话命令' : 'Linux命令'}
                   </button>
                 ))}
               </div>
               <div className="flex-1 overflow-hidden">
-                {rightTab === 'logs' ? (
-                  <LogPanel sessionId={currentSessionId} />
-                ) : rightTab === 'commands' ? (
+                {rightTab === 'commands' ? (
                   <ConversationCommandsPanel />
                 ) : (
                   <LinuxKnowledgePanel />
