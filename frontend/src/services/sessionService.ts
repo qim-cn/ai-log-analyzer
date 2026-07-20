@@ -29,4 +29,8 @@ export const sessionService = {
   /** 重命名会话 */
   rename: (id: string, title: string) =>
     http.put<null>(`/sessions/${id}/rename`, { title }),
+
+  /** 第一轮问答后自动生成会话标题（失败返回 updated=false，静默处理） */
+  autoTitle: (id: string) =>
+    http.post<{ title: string; updated: boolean }>(`/sessions/${id}/auto-title`),
 };

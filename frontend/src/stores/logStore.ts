@@ -15,7 +15,7 @@ interface LogState {
 
   // Actions
   fetchLogs: (sessionId: string) => Promise<void>;
-  uploadLog: (sessionId: string, file: File) => Promise<void>;
+  uploadLog: (sessionId: string, file: File) => Promise<LogFile>;
   deleteLog: (logId: string) => Promise<void>;
   selectLog: (logId: string | null) => void;
 }
@@ -44,6 +44,7 @@ export const useLogStore = create<LogState>((set, get) => ({
       set((state) => ({
         logFiles: [...state.logFiles, logFile],
       }));
+      return logFile;
     } finally {
       set({ uploading: false });
     }

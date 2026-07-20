@@ -125,3 +125,46 @@ def test_summarize_mapping_empty():
 def test_summarize_mapping_unknown_placeholder():
     stats = summarize_mapping({"not-a-placeholder": "x"})
     assert stats == {"OTHER": 1}
+
+
+def test_custom_pattern_replaced():
+    masker = LogMasker(custom_patterns=["内部域名", r"db\d+-prod"])
+    masked = masker.mask("访问内部域名失败，主机 db01-prod 超时，重试 db02-prod")
+    assert "内部域名" not in masked
+    assert "db01-prod" not in masked
+    assert "db02-prod" not in masked
+    assert "[CUSTOM_1]" in masked
+    assert "[CUSTOM_2]" in masked
+
+
+def test_custom_pattern_same_value_same_placeholder():
+    masker = LogMasker(custom_patterns=["机密项目A"])
+    part1 = masker.mask("机密项目A 上线")
+    part2 = masker.mask("机密项目A 回滚")
+    assert part1.count("[CUSTOM_1]") == 1
+    assert part2.count("[CUSTOM_1]") == 1
+    assert masker.mapping == {"[CUSTOM_1]": "机密项目A"}
+
+
+def test_custom_pattern_invalid_regex_treated_as_literal():
+    # "[" 是非法正则，应按纯文本转义处理
+    masker = LogMasker(custom_patterns=["[", "10.0.0.1"])
+    masked = masker.mask("a [ b")
+    assert masked == "a [CUSTOM_1] b"
+    # 纯文本 "10.0.0.1" 中的点被转义后仍命中该 IP 字面量
+    masked2 = masker.mask("ping 10.0.0.1")
+    assert "10.0.0.1" not in masked2
+
+
+def test_custom_pattern_applied_before_builtin():
+    # 自定义规则优先于内置规则命中
+    masker = LogMasker(custom_patterns=[r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"])
+    masked = masker.mask("from 192.168.1.1")
+    assert "[CUSTOM_1]" in masked
+    assert "[IP_1]" not in masked
+
+
+def test_no_custom_patterns_unchanged_behavior():
+    masker = LogMasker()
+    masked = masker.mask("hello world")
+    assert masked == "hello world"
