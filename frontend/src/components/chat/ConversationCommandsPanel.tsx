@@ -165,7 +165,13 @@ function CommandItem({
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
-    if (await copyText(command)) {
+    // 复制时剥掉整行 shell 注释（# 开头），注释只用于展示，不带进剪贴板
+    const cmdOnly = command
+      .split('\n')
+      .filter((line) => !/^\s*#/.test(line))
+      .join('\n')
+      .trim();
+    if (await copyText(cmdOnly || command)) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     }
