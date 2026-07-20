@@ -149,3 +149,13 @@ class MaskingService:
 
 # 全局实例
 masking_service = MaskingService()
+
+
+def summarize_mapping(mapping: dict[str, str]) -> dict[str, int]:
+    """统计脱敏映射中每类占位符的数量（如 {"IP": 2, "PHONE": 1}）"""
+    stats: dict[str, int] = {}
+    for placeholder in mapping:
+        m = re.match(r"\[([A-Z]+)_\d+\]", placeholder)
+        category = m.group(1) if m else "OTHER"
+        stats[category] = stats.get(category, 0) + 1
+    return stats
