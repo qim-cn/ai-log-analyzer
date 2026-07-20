@@ -9,6 +9,7 @@ import {
   Plus, X, Pencil, Trash2, Save,
 } from 'lucide-react';
 import { cn } from '@/utils';
+import { copyText } from '@/utils/clipboard';
 
 interface KnowledgeEntry {
   id: number;
@@ -90,11 +91,13 @@ export function LinuxKnowledgePanel() {
 
   useEffect(() => { doSearch(); }, [selectedCategory, doSearch]);
 
-  const handleCopy = (command: string, id: number) => {
-    navigator.clipboard.writeText(command).then(() => {
+  const handleCopy = async (command: string, id: number) => {
+    // 用 copyText 而非裸 navigator.clipboard：HTTP 局域网部署下 clipboard API 不可用
+    const ok = await copyText(command);
+    if (ok) {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
-    });
+    }
   };
 
   const handleCategoryClick = (cat: string) => {
