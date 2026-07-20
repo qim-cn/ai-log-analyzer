@@ -4,7 +4,7 @@
 
 import { create } from 'zustand';
 import type { Message, CaseRef } from '@/types';
-import { messageService, sendMessage } from '@/services';
+import { messageService, sendMessage, sessionService } from '@/services';
 import { useSessionStore } from './sessionStore';
 
 // 当前流式请求的 AbortController；切会话/重发时 abort 旧的，避免旧 chunk 写入造成串台
@@ -122,6 +122,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
         thinking: false,
         thinkingMessage: '',
       }));
+
+      // 首轮问答后自动生成会话标题（标题仍是默认值/"确认中 - "前缀时；失败静默）
+      const sess = useSessionStore.getState().sessions.find((s) => s.id === sessionId);
+      if (!sess || sess.title === '新对话' || sess.title.startsWith('确认中 - ')) {
+        sessionService
+          .autoTitle(sessionId)
+          .then((r) => {
+            if (r.updated) useSessionStore.getState().fetchSessions();
+          })
+          .catch(() => {
+            /* AI 不可用时保持原标题，静默处理 */
+          });
+      }
     } catch (error) {
       // 主动取消（切会话/重发）不算错误，静默清理即可
       const aborted = (error as { name?: string })?.name === 'AbortError';

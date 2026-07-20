@@ -12,9 +12,10 @@
  */
 
 import { useMemo, useState, useCallback } from 'react';
-import { Terminal, Copy, Check } from 'lucide-react';
+import { Terminal, Copy, Check, BookmarkPlus } from 'lucide-react';
 import { useChatStore } from '@/stores';
-import { cn, copyText, isCommandLike } from '@/utils';
+import { useToast } from '@/components/ui/Toast';
+import { cn, copyText, isCommandLike, stripShellComments } from '@/utils';
 
 interface ConvCommand {
   command: string;
@@ -163,13 +164,43 @@ function CommandItem({
   description: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const { toast } = useToast();
 
   const handleCopy = useCallback(async () => {
-    if (await copyText(command)) {
+    // 复制时剥掉整行 shell 注释（# 开头），注释只用于展示，不带进剪贴板
+    if (await copyText(stripShellComments(command))) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     }
   }, [command]);
+
+  // 存入 Linux 知识库（复用 LinuxKnowledgePanel 的添加接口）
+  const handleSave = useCallback(async () => {
+    const cmd = stripShellComments(command);
+    const title = description || cmd.slice(0, 20);
+    try {
+      const r = await fetch('/api/knowledge/linux/entry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          category: 'AI 沉淀',
+          title,
+          command: cmd,
+          description,
+          tags: '',
+          solution: description,
+        }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch (err) {
+      console.error('存入知识库失败:', err);
+      toast('error', '存入知识库失败');
+    }
+  }, [command, description, toast]);
 
   return (
     <div className="border border-border rounded-lg p-2.5">
@@ -183,6 +214,17 @@ function CommandItem({
         >
           {command}
         </div>
+        <button
+          onClick={handleSave}
+          className="shrink-0 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+          title="存入 Linux 知识库（AI 沉淀）"
+        >
+          {saved ? (
+            <Check size={13} className="text-success" />
+          ) : (
+            <BookmarkPlus size={13} />
+          )}
+        </button>
         <button
           onClick={handleCopy}
           className="shrink-0 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"

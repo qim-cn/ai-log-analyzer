@@ -35,4 +35,12 @@ export const settingsService = {
     api_key?: string;
   }) =>
     http.put<EmbeddingSettings>('/settings/embedding', data),
+
+  /** 获取自定义脱敏规则 */
+  getMaskingPatterns: () =>
+    http.get<{ patterns: string[] }>('/settings/masking'),
+
+  /** 更新自定义脱敏规则 */
+  updateMaskingPatterns: (patterns: string[]) =>
+    http.put<{ patterns: string[] }>('/settings/masking', { patterns }),
 };

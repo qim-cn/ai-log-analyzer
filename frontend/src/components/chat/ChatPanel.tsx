@@ -14,7 +14,7 @@ import { ExportButton } from '@/components/export/ExportButton';
 import { ComparePanel } from '@/components/compare/ComparePanel';
 import { useChatStore, useSessionStore, useLogStore, useQuickPromptStore } from '@/stores';
 import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE } from '@/constants';
-import { cn, formatFileSize } from '@/utils';
+import { cn, formatFileSize, analyzeUploadedLog } from '@/utils';
 
 interface ChatPanelProps {
   sessionId: string;
@@ -76,7 +76,9 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
         return;
       }
       try {
-        await uploadLog(sessionId, file);
+        const logFile = await uploadLog(sessionId, file);
+        // 上传成功后自动出第一份分析（TOP 错误聚类 -> 发送给 AI；失败静默）
+        void analyzeUploadedLog(sessionId, logFile);
       } catch (err) {
         alert(`上传失败: ${err instanceof Error ? err.message : '未知错误'}`);
       }

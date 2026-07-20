@@ -21,6 +21,19 @@ export function isCommandLike(s: string): boolean {
 }
 
 /**
+ * 剥掉整行 shell 注释（# 开头）：注释只用于展示，
+ * 复制到剪贴板 / 存入知识库时只保留纯命令
+ */
+export function stripShellComments(command: string): string {
+  const stripped = command
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n')
+    .trim();
+  return stripped || command;
+}
+
+/**
  * 预处理聊天 markdown：
  * - ==命令== (isCommandLike) -> ```command 块```，由 CommandWindow 渲染成黑色窗口
  * - ==其它== (日志/高亮) -> **加粗**，避免原样显示 == 等号
