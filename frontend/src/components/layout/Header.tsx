@@ -57,13 +57,15 @@ export function Header({
         {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
       </button>
 
-      <button
-        onClick={onOpenSettings}
-        className="p-1.5 hover:bg-muted rounded-lg transition-colors"
-        title="设置"
-      >
-        <Settings size={17} />
-      </button>
+      {onOpenSettings && (
+        <button
+          onClick={onOpenSettings}
+          className="p-1.5 hover:bg-muted rounded-lg transition-colors"
+          title="设置"
+        >
+          <Settings size={17} />
+        </button>
+      )}
     </header>
   );
 }
