@@ -274,3 +274,46 @@ async def update_embedding_settings(body: UpdateEmbeddingSettingsRequest, reques
             api_key_set=bool(config.get("embedding_api_key")),
         ),
     }
+
+
+@router.get("/masking", response_model=dict)
+async def get_masking_patterns():
+    """获取用户自定义脱敏规则（字符串列表，每项按正则编译、失败按纯文本处理）"""
+    from app.services.masking_service import load_custom_patterns
+
+    return {
+        "code": 0,
+        "message": "success",
+        "data": {"patterns": load_custom_patterns()},
+    }
+
+
+@router.put("/masking", response_model=dict)
+async def update_masking_patterns(body: dict, request: Request):
+    """更新用户自定义脱敏规则（仅管理员）；上传新日志时生效"""
+    import json
+
+    from app.services.masking_service import CUSTOM_PATTERNS_SETTING_KEY
+
+    _require_admin(request.state.user)
+
+    patterns = body.get("patterns")
+    if not isinstance(patterns, list) or not all(isinstance(p, str) for p in patterns):
+        raise ValidationError("patterns 必须是字符串数组")
+    # 过滤空白项并限制数量/长度，防止滥用
+    cleaned = [p.strip() for p in patterns if p.strip()][:100]
+    if any(len(p) > 200 for p in cleaned):
+        raise ValidationError("单条规则最长 200 字符")
+
+    conn = get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO ai_settings (key, value) VALUES (?, ?)",
+        (CUSTOM_PATTERNS_SETTING_KEY, json.dumps(cleaned, ensure_ascii=False)),
+    )
+    conn.commit()
+
+    return {
+        "code": 0,
+        "message": "自定义脱敏规则已保存",
+        "data": {"patterns": cleaned},
+    }

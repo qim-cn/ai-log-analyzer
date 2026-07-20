@@ -22,7 +22,7 @@ from app.middlewares.error_handler import ValidationError
 from app.models.log_file import LogFile, LogFileType
 from app.repositories.log_repository import log_repository
 from app.services.error_cluster_service import extract_timestamp
-from app.services.masking_service import masking_service
+from app.services.masking_service import load_custom_patterns, masking_service
 from app.utils.log_parser import (
     LogStatistics,
     LogSummary,
@@ -110,7 +110,11 @@ class LogService:
 
         # 脱敏器：同一文件全程复用同一实例，保证同一敏感值映射到同一占位符
         mask_enabled = masking_service.is_enabled()
-        masker = masking_service.create_masker() if mask_enabled else None
+        masker = (
+            masking_service.create_masker(custom_patterns=load_custom_patterns())
+            if mask_enabled
+            else None
+        )
         # 增量解码 + 行级缓冲：保证跨分块的 UTF-8 字符和敏感值不被截断
         decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         pending = ""
@@ -214,7 +218,9 @@ class LogService:
         mask_enabled = masking_service.is_enabled()
         masking_map_json = None
         if mask_enabled:
-            text_content, mapping = masking_service.mask_text(text_content)
+            text_content, mapping = masking_service.mask_text(
+                text_content, custom_patterns=load_custom_patterns()
+            )
             if mapping:
                 masking_map_json = json.dumps(mapping, ensure_ascii=False)
 

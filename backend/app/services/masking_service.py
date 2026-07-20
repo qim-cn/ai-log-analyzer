@@ -54,18 +54,37 @@ _KV_SECRET = (
 
 _EMAIL = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"
 
+# 自定义规则占位符类别
+CAT_CUSTOM = "CUSTOM"
+
+# 设置表（ai_settings）里存自定义脱敏规则的 key（JSON 字符串数组）
+CUSTOM_PATTERNS_SETTING_KEY = "custom_mask_patterns"
+
+
+def _compile_custom_pattern(pattern: str) -> re.Pattern:
+    """编译自定义规则：优先当正则，编译失败按纯文本转义处理"""
+    try:
+        return re.compile(pattern)
+    except re.error:
+        return re.compile(re.escape(pattern))
+
 
 class LogMasker:
     """有状态脱敏器
 
     内部维护 值 -> 占位符 的映射，同一实例处理的所有文本
     （如同一文件的多个流式分块）中，同一敏感值始终映射到同一占位符。
+    可通过 custom_patterns 追加用户自定义脱敏规则（占位符 [CUSTOM_N]）。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, custom_patterns: list[str] | None = None) -> None:
         # 类别 -> {原始值: 占位符}
         self._maps: dict[str, dict[str, str]] = {}
         self._counters: dict[str, int] = {}
+        # 用户自定义规则（先于内置规则命中，允许覆盖内置行为）
+        self._custom = [
+            _compile_custom_pattern(p) for p in (custom_patterns or []) if p
+        ]
 
     @property
     def mapping(self) -> dict[str, str]:
@@ -88,6 +107,12 @@ class LogMasker:
         """对文本脱敏，返回脱敏后的文本"""
         if not text:
             return text
+
+        # 0. 用户自定义规则（最优先，占位符 [CUSTOM_N]）
+        for pattern in self._custom:
+            text = pattern.sub(
+                lambda m: self._placeholder(CAT_CUSTOM, m.group(0)), text
+            )
 
         # 1. Bearer token（先去掉整个 "Bearer xxx"，避免后续规则重复命中）
         def _mask_bearer(m: re.Match) -> str:
@@ -136,19 +161,43 @@ class MaskingService:
         """脱敏开关（MASK_SENSITIVE_DATA，默认开启）"""
         return settings.mask_sensitive_data
 
-    def create_masker(self) -> LogMasker:
+    def create_masker(self, custom_patterns: list[str] | None = None) -> LogMasker:
         """创建一个带独立映射的脱敏器（每个日志文件一个）"""
-        return LogMasker()
+        return LogMasker(custom_patterns=custom_patterns)
 
-    def mask_text(self, text: str) -> tuple[str, dict[str, str]]:
+    def mask_text(
+        self, text: str, custom_patterns: list[str] | None = None
+    ) -> tuple[str, dict[str, str]]:
         """一次性脱敏：返回 (脱敏后文本, 占位符 -> 原始值 映射)"""
-        masker = LogMasker()
+        masker = LogMasker(custom_patterns=custom_patterns)
         masked = masker.mask(text)
         return masked, masker.mapping
 
 
 # 全局实例
 masking_service = MaskingService()
+
+
+def load_custom_patterns() -> list[str]:
+    """从设置表读取用户自定义脱敏规则（ai_settings.custom_mask_patterns，JSON 数组）
+
+    读取失败（表不存在/JSON 损坏等）返回空列表，不影响上传。
+    """
+    try:
+        import json
+
+        from app.config.database import get_connection
+
+        row = get_connection().execute(
+            "SELECT value FROM ai_settings WHERE key = ?",
+            (CUSTOM_PATTERNS_SETTING_KEY,),
+        ).fetchone()
+        if not row:
+            return []
+        patterns = json.loads(row["value"])
+        return [p for p in patterns if isinstance(p, str) and p.strip()] if isinstance(patterns, list) else []
+    except Exception:
+        return []
 
 
 def summarize_mapping(mapping: dict[str, str]) -> dict[str, int]:

@@ -112,3 +112,26 @@ async def delete_session(session_id: str, request: Request):
 
     session_service.delete_session(session_id)
     return {"code": 0, "message": "删除成功", "data": None}
+
+
+@router.post("/{session_id}/auto-title", response_model=dict)
+async def auto_title(session_id: str, request: Request):
+    """
+    第一轮问答后自动生成会话标题
+
+    取该会话首轮 user/assistant 消息调 AI 生成 15 字以内标题并更新；
+    AI 不可用时保持原标题（updated=false），前端静默处理。
+    """
+    user = request.state.user
+    session = session_service.get_session(session_id)
+
+    if user.role != UserRole.ADMIN and session.user_id != user.id:
+        from app.middlewares.error_handler import ValidationError
+        raise ValidationError("无权修改此会话")
+
+    title, updated = await session_service.generate_auto_title(session_id)
+    return {
+        "code": 0,
+        "message": "success",
+        "data": {"title": title, "updated": updated},
+    }
