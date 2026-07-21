@@ -366,3 +366,101 @@ async def test_knowledge_lookup_kb_failure_still_gets_templates(monkeypatch):
     assert ctx.knowledge_refs == []
     assert len(ctx.repair_templates) == 1
     assert any("不可用" in m for m in messages)
+
+
+# ---- 报告 prompt / 兜底报告 ----
+
+from app.services.agent_steps import build_fallback_report, build_report_prompt
+
+
+def _rich_ctx() -> InvestigationContext:
+    """填满证据的上下文"""
+    ctx = _ctx(content="ERROR DIMM A2 training failed\n", model="7500S", history="用户: 帮忙看下\nAI: 初步看是内存")
+    ctx.error_clusters = {
+        "total_error_lines": 3,
+        "clusters": [
+            {"pattern": "ERROR DIMM A<NUM> training failed", "count": 3, "first_seen": None,
+             "last_seen": None, "sample": "ERROR DIMM A2 training failed", "ratio": 1.0},
+        ],
+    }
+    ctx.top_patterns = ["ERROR DIMM A<NUM> training failed"]
+    ctx.similar_cases = [{"log_id": "old-1", "similarity": 0.92, "preview": "历史案例预览"}]
+    ctx.batch_result = {
+        "model": "7500S", "checked_sessions": 5, "matched_count": 1,
+        "matched_machines": ["SN002"], "is_batch": True,
+    }
+    ctx.knowledge_refs = [{"filename": "case1.md", "title": "DIMM 故障案例", "snippet": "换内存解决"}]
+    ctx.repair_templates = [{"text": "重插拔内存条", "count": 3}]
+    return ctx
+
+
+def test_build_report_prompt_contains_all_evidence():
+    ctx = _rich_ctx()
+
+    messages = build_report_prompt(ctx)
+
+    assert len(messages) == 2
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"]  # 复用现有产线 system prompt
+    user = messages[1]["content"]
+    # 四段输出指令
+    assert "🎯 故障部件定位" in user
+    assert "🔍 根因判定" in user
+    assert "🛠️ 维修动作" in user
+    assert "⚠️ 是否需升级 WWWTE" in user
+    # 证据全部带入
+    assert "DIMM" in user                      # 错误聚类
+    assert "历史案例预览" in user                # 相似案例
+    assert "SN002" in user                     # 批次检测
+    assert "DIMM 故障案例" in user               # 知识库
+    assert "重插拔内存条" in user                # 维修模板
+    assert "初步看是内存" in user                # 对话上下文
+
+
+def test_build_report_prompt_without_optional_evidence():
+    """只有错误聚类时 prompt 仍完整（可选证据段不出现）"""
+    ctx = _ctx(content="ERROR x\n")
+    ctx.error_clusters = {
+        "total_error_lines": 1,
+        "clusters": [{"pattern": "ERROR x", "count": 1, "first_seen": None,
+                      "last_seen": None, "sample": "ERROR x", "ratio": 1.0}],
+    }
+
+    messages = build_report_prompt(ctx)
+
+    user = messages[1]["content"]
+    assert "证据 1" in user
+    assert "证据 2" not in user   # 无相似案例
+    assert "证据 3" not in user   # 无批次结果
+
+
+def test_build_fallback_report_structure():
+    ctx = _rich_ctx()
+
+    report = build_fallback_report(ctx)
+
+    assert "本地兜底" in report
+    assert "🎯 故障部件定位" in report
+    assert "🔍 根因判定" in report
+    assert "🛠️ 维修动作" in report
+    assert "⚠️ 是否需升级 WWWTE" in report
+    assert "DIMM" in report
+    assert "SN002" in report
+    assert "重插拔内存条" in report
+    # 批次判定结论体现在升级段
+    assert "反馈 WWWTE" in report
+
+
+def test_build_fallback_report_single_machine():
+    ctx = _ctx(content="ERROR x\n")
+    ctx.error_clusters = {"total_error_lines": 1, "clusters": [
+        {"pattern": "ERROR x", "count": 1, "first_seen": None,
+         "last_seen": None, "sample": "ERROR x", "ratio": 1.0}]}
+    ctx.batch_result = {
+        "model": "7500S", "checked_sessions": 3, "matched_count": 0,
+        "matched_machines": [], "is_batch": False,
+    }
+
+    report = build_fallback_report(ctx)
+
+    assert "单台偶发" in report
