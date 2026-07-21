@@ -47,6 +47,7 @@ services:
       - no_proxy=192.168.31.5,localhost,127.0.0.1
     volumes:
       - app-data:/data
+      - ./resolved:/resolved:rw
     restart: unless-stopped
     networks:
       - app-network
