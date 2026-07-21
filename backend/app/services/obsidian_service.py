@@ -187,18 +187,21 @@ async def _webdav_walk_recursive(url: str, auth: httpx.BasicAuth | None, base_ur
     items = await _webdav_list(url, auth)
     notes = []
 
+    p = urlparse(base_url)
+    webdav_root = f"{p.scheme}://{p.netloc}"
+
     for item in items:
         name = item["name"]
-        href = unquote(item["href"])
-        # 跳过目录本身
-        if href.rstrip("/") == url.rstrip("/"):
+        href = item["href"]
+        # 跳过目录本身（href 与当前 URL 路径相同）
+        if unquote(href.rstrip("/")) == unquote(urlparse(url).path.rstrip("/")):
             continue
 
         if item.get("is_collection"):
-            sub_url = _make_webdav_url(base_url, href.lstrip("/"))
+            sub_url = f"{webdav_root}{href}"
             notes.extend(await _webdav_walk_recursive(sub_url, auth, base_url, vault_root_prefix))
         elif name.endswith(".md") and name != "index.md":
-            rel = href.removeprefix(vault_root_prefix).lstrip("/")
+            rel = unquote(href).removeprefix(vault_root_prefix).lstrip("/")
             if not rel:
                 rel = name
             parts = name.replace(".md", "").split("_", 1)
