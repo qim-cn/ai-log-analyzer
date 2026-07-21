@@ -116,3 +116,62 @@ async def run_similar_cases(ctx: InvestigationContext, emit: Emit) -> StepResult
         status="ok",
         summary=f"{len(ctx.similar_cases)} 个相似案例（最高 {top:.2f}）",
     )
+
+
+async def run_batch_pattern(ctx: InvestigationContext, emit: Emit) -> StepResult:
+    """步骤 3：同批次模式检测 —— 同机型其他机器是否出现相同失败模式
+
+    产线逻辑（对齐 system prompt）：单台故障优先硬件/装配/配置；
+    同机型多台出现完全相同模式 → 疑似 testcode/批次问题，建议升级 WWWTE。
+    """
+    if not ctx.session_model:
+        return StepResult(status="skipped", summary="会话未设置机型，跳过批次检测")
+    if not ctx.top_patterns:
+        return StepResult(status="skipped", summary="无错误模式，跳过批次检测")
+
+    from app.repositories.log_repository import log_repository
+    from app.repositories.session_repository import session_repository
+    from app.services.error_cluster_service import is_error_line, normalize_line
+
+    target = set(ctx.top_patterns)
+    sessions = session_repository.list_all(model=ctx.session_model, limit=50)
+    others = [s for s in sessions if s.id != ctx.session_id][:BATCH_SESSIONS_LIMIT]
+
+    matched_machines: list[str] = []
+    for i, s in enumerate(others, 1):
+        hit = False
+        for lf in log_repository.get_by_session(s.id):
+            content = log_service.get_log_content(lf, max_chars=50000)
+            patterns_in_log = {
+                normalize_line(line)
+                for line in content.split("\n")
+                if line.strip() and is_error_line(line)
+            }
+            if patterns_in_log & target:
+                hit = True
+                break
+        if hit:
+            matched_machines.append(s.sn or s.title or s.id[:8])
+        if i % 5 == 0:
+            emit(f"已检查 {i}/{len(others)} 个同机型会话...")
+
+    ctx.batch_result = {
+        "model": ctx.session_model,
+        "checked_sessions": len(others),
+        "matched_count": len(matched_machines),
+        "matched_machines": matched_machines[:10],
+        # 其他机器 ≥1 台相同 → 连本机 ≥2 台，构成"同批次多台相同模式"
+        "is_batch": len(matched_machines) >= 1,
+    }
+
+    if matched_machines:
+        emit(
+            f"⚠️ 同机型另有 {len(matched_machines)} 台机器出现相同失败模式："
+            f"{', '.join(matched_machines[:5])}"
+        )
+        return StepResult(
+            status="ok",
+            summary=f"同批次 {len(matched_machines) + 1} 台相同模式（含本机）",
+        )
+    emit(f"检查了 {len(others)} 个同机型会话，未发现相同失败模式")
+    return StepResult(status="ok", summary=f"单台偶发（检查 {len(others)} 个同机型会话）")

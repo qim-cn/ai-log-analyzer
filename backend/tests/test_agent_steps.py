@@ -148,3 +148,114 @@ async def test_similar_cases_skipped_without_patterns():
     result = await run_similar_cases(ctx, emit)
 
     assert result.status == "skipped"
+
+
+# ---- 步骤 3：同批次模式检测 ----
+
+from app.models.session import Session
+from app.services.agent_steps import run_batch_pattern
+
+
+def _session(sid: str, model: str | None, sn: str | None = None) -> Session:
+    return Session(
+        id=sid,
+        title=f"会话-{sid}",
+        created_at="2026-07-21T00:00:00Z",
+        updated_at="2026-07-21T00:00:00Z",
+        user_id="u1",
+        model=model,
+        sn=sn,
+        status="open",
+    )
+
+
+def _patch_batch_repos(monkeypatch, sessions, logs_by_session):
+    """假 session/log 仓库（函数级 import，sys.modules 注入）"""
+    monkeypatch.setitem(
+        sys.modules,
+        "app.repositories.session_repository",
+        SimpleNamespace(
+            session_repository=SimpleNamespace(
+                list_all=lambda model=None, limit=100: [
+                    s for s in sessions if model is None or s.model == model
+                ][:limit]
+            )
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "app.repositories.log_repository",
+        SimpleNamespace(
+            log_repository=SimpleNamespace(
+                get_by_session=lambda sid: logs_by_session.get(sid, [])
+            )
+        ),
+    )
+
+
+async def test_batch_pattern_detects_batch(monkeypatch):
+    """同机型另一台机器出现相同归一化错误模式 → 批次判定"""
+    error_log = _log(log_id="l-cur", session_id="sess-1",
+                     content="2024-01-15 10:30:01 ERROR DIMM A2 training failed\n")
+    other_log = _log(log_id="l-other", session_id="sess-2",
+                     content="2024-01-16 09:00:01 ERROR DIMM A2 training failed\n")
+    clean_log = _log(log_id="l-clean", session_id="sess-3", content="INFO ok\n")
+
+    _patch_batch_repos(
+        monkeypatch,
+        sessions=[
+            _session("sess-1", "7500S", sn="SN001"),
+            _session("sess-2", "7500S", sn="SN002"),
+            _session("sess-3", "7500S", sn="SN003"),
+        ],
+        logs_by_session={"sess-1": [error_log], "sess-2": [other_log], "sess-3": [clean_log]},
+    )
+
+    ctx = _ctx(content=error_log.content, model="7500S")
+    ctx.top_patterns = ["ERROR DIMM A<NUM> training failed"]  # 归一化后形态
+    # 用真实归一化保证测试与实现对齐
+    from app.services.error_cluster_service import normalize_line
+    ctx.top_patterns = [normalize_line("2024-01-15 10:30:01 ERROR DIMM A2 training failed")]
+
+    messages, emit = _collector()
+    result = await run_batch_pattern(ctx, emit)
+
+    assert result.status == "ok"
+    assert ctx.batch_result["matched_count"] == 1
+    assert ctx.batch_result["is_batch"] is True
+    assert "SN002" in ctx.batch_result["matched_machines"]
+    assert "同批次" in result.summary
+
+
+async def test_batch_pattern_single_occurrence(monkeypatch):
+    """同机型其他会话都没有相同模式 → 单台偶发"""
+    error_log = _log(log_id="l-cur", session_id="sess-1",
+                     content="ERROR unique failure xyz\n")
+    clean_log = _log(log_id="l-clean", session_id="sess-2", content="INFO ok\n")
+    _patch_batch_repos(
+        monkeypatch,
+        sessions=[_session("sess-1", "7500S"), _session("sess-2", "7500S", sn="SN002")],
+        logs_by_session={"sess-1": [error_log], "sess-2": [clean_log]},
+    )
+
+    ctx = _ctx(content=error_log.content, model="7500S")
+    ctx.top_patterns = ["ERROR unique failure xyz"]
+    messages, emit = _collector()
+
+    result = await run_batch_pattern(ctx, emit)
+
+    assert result.status == "ok"
+    assert ctx.batch_result["matched_count"] == 0
+    assert ctx.batch_result["is_batch"] is False
+    assert "单台偶发" in result.summary
+
+
+async def test_batch_pattern_skipped_without_model():
+    ctx = _ctx(content="ERROR x\n", model=None)
+    ctx.top_patterns = ["ERROR x"]
+    messages, emit = _collector()
+
+    result = await run_batch_pattern(ctx, emit)
+
+    assert result.status == "skipped"
+    assert "机型" in result.summary
