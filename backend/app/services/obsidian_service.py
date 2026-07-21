@@ -430,7 +430,7 @@ class ObsidianService:
         """获取本地仓库目录"""
         config = _get_settings()
         if resolved:
-            vault_path = DEFAULT_RESOLVED_PATH.strip("/")
+            vault_path = config.get("resolved_path", DEFAULT_RESOLVED_PATH).strip("/")
         else:
             vault_path = config.get("vault_path", DEFAULT_VAULT_PATH).strip("/")
         local_base = Path(LOCAL_VAULT_PATH)
@@ -440,7 +440,7 @@ class ObsidianService:
         """获取 WebDAV 保存目标路径"""
         config = _get_settings()
         if resolved:
-            return DEFAULT_RESOLVED_PATH.strip("/")
+            return config.get("resolved_path", DEFAULT_RESOLVED_PATH).strip("/")
         return config.get("vault_path", DEFAULT_VAULT_PATH).strip("/")
 
     # ============================================================
