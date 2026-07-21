@@ -24,7 +24,7 @@ AI 驱动的日志分析工具。上传日志文件，用自然语言提问，AI
 ## 快速开始
 
 ```bash
-git clone git@github.com:h19980816/ai-log-analyzer.git
+git clone git@github.com:qim-cn/ai-log-analyzer.git
 cd ai-log-analyzer
 cp .env.example .env
 # 编辑 .env 填写 AI_BASE_URL / AI_API_KEY / AI_MODEL
@@ -35,6 +35,22 @@ docker compose up -d
 - **前端** → http://localhost:8880
 - **后端 API** → http://localhost:8000
 - **健康检查** → http://localhost:8000/api/health
+
+## Docker Compose 部署
+
+```bash
+cp .env.example .env
+# 编辑 .env 填写 AI_BASE_URL / AI_API_KEY / AI_MODEL / JWT_SECRET
+docker compose up -d
+```
+
+部署说明：
+
+- 默认暴露端口：`8000`（后端）、`8880`（前端）
+- 数据库和上传日志持久化到 Docker volume `app-data`
+- 已解决案例通过 `docker-compose.yml` 中的 volumes 持久化到宿主机，容器重建后不丢失
+- 运行日志：`docker compose logs -f backend`
+- 更新重启：`docker compose up -d --build`
 
 ## 环境变量
 
@@ -95,7 +111,7 @@ ai-log-analyzer/
 | 审计 | `/api/audit` | 操作审计日志 |
 | CI/CD | `/api/cicd` | CI/CD 集成 |
 
-> 详细 API 文档见 [Wiki](https://github.com/h19980816/ai-log-analyzer/wiki/API-Reference)
+> 详细 API 文档见 [Wiki](https://github.com/qim-cn/ai-log-analyzer/wiki/API-Reference)
 
 ## 技术栈
 
