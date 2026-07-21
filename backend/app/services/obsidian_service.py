@@ -177,17 +177,15 @@ async def _webdav_list(url: str, auth: httpx.BasicAuth | None) -> list[dict]:
     return items
 
 
-async def _webdav_walk_recursive(url: str, auth: httpx.BasicAuth | None, base_url: str, vault_path: str) -> list[dict]:
-    """递归遍历 WebDAV vault_path 下的所有 .md 笔记（包含子目录）。
+async def _webdav_walk_recursive(url: str, auth: httpx.BasicAuth | None, base_url: str, vault_root_prefix: str) -> list[dict]:
+    """
+    递归遍历 WebDAV 目录下的所有 .md 笔记（包含子目录）。
 
-    返回的 filename/path 均为 vault_path 内的相对路径，以便
-    get_note_content 能正确读取子目录中的文件。
+    返回的 filename/path 均为 vault 根目录下的相对路径，以便
+    get_note_content 能正确读取 browse_paths 下的任意深度的文件。
     """
     items = await _webdav_list(url, auth)
     notes = []
-
-    base_url_path = unquote(urlparse(base_url).path).rstrip("/") + "/"
-    vault_prefix = (base_url_path + vault_path.strip("/")).rstrip("/") + "/"
 
     for item in items:
         name = item["name"]
@@ -198,9 +196,9 @@ async def _webdav_walk_recursive(url: str, auth: httpx.BasicAuth | None, base_ur
 
         if item.get("is_collection"):
             sub_url = _make_webdav_url(base_url, href.lstrip("/"))
-            notes.extend(await _webdav_walk_recursive(sub_url, auth, base_url, vault_path))
+            notes.extend(await _webdav_walk_recursive(sub_url, auth, base_url, vault_root_prefix))
         elif name.endswith(".md") and name != "index.md":
-            rel = href.removeprefix(vault_prefix).lstrip("/")
+            rel = href.removeprefix(vault_root_prefix).lstrip("/")
             if not rel:
                 rel = name
             parts = name.replace(".md", "").split("_", 1)
@@ -841,24 +839,41 @@ updated: {datetime.utcnow().isoformat()}Z
             return self._local_list_notes()
 
     async def _list_notes_webdav(self) -> list[dict]:
-        """通过 WebDAV 递归获取笔记列表（包含子目录）"""
+        """通过 WebDAV 递归获取笔记列表（使用 browse_paths 或默认 vault_path）"""
         config = _get_settings()
 
         auth = _webdav_auth(config["webdav_user"], config["webdav_pass"])
         base_url = config["webdav_url"].rstrip("/")
         vault_path = config["vault_path"].strip("/")
+        browse_paths = config.get("browse_paths") or []
 
-        dir_url = _make_webdav_url(base_url, vault_path)
+        base_url_path = unquote(urlparse(base_url).path).rstrip("/") + "/"
+        vault_root_prefix = base_url_path
+
+        # 如果前端选择了 browse_paths，则遍历这些目录；否则使用默认 vault_path
+        paths = [p.strip("/") for p in browse_paths if p.strip("/")] or [vault_path]
+
         try:
-            notes = await _webdav_walk_recursive(dir_url, auth, base_url, vault_path)
+            notes = []
+            for path in paths:
+                dir_url = _make_webdav_url(base_url, path)
+                notes.extend(await _webdav_walk_recursive(dir_url, auth, base_url, vault_root_prefix))
         except AppError:
             raise
         except Exception as e:
             logger.error(f"列出笔记失败 (WebDAV 网络异常): {e}")
             raise AppError("Obsidian 知识库连接失败，请检查 WebDAV 服务是否可达")
 
-        notes.sort(key=lambda x: x["date"], reverse=True)
-        return notes
+        # 去重（browse_paths 可能有重叠）
+        seen = set()
+        unique_notes = []
+        for n in notes:
+            if n["filename"] not in seen:
+                seen.add(n["filename"])
+                unique_notes.append(n)
+
+        unique_notes.sort(key=lambda x: x["date"], reverse=True)
+        return unique_notes
 
     async def get_note_content(self, filename: str) -> Optional[str]:
         """获取笔记内容（WebDAV 优先，本地回退）"""
@@ -868,14 +883,13 @@ updated: {datetime.utcnow().isoformat()}Z
             return self._local_get_file_content(filename)
 
     async def _get_note_content_webdav(self, filename: str) -> Optional[str]:
-        """通过 WebDAV 获取笔记内容"""
+        """通过 WebDAV 获取笔记内容。filename 为 vault 根目录下的相对路径"""
         config = _get_settings()
 
         auth = _webdav_auth(config["webdav_user"], config["webdav_pass"])
         base_url = config["webdav_url"].rstrip("/")
-        vault_path = config["vault_path"].strip("/")
 
-        file_url = _make_webdav_url(base_url, f"{vault_path}/{filename}")
+        file_url = _make_webdav_url(base_url, filename)
         return await _webdav_get(file_url, auth)
 
     async def get_file_tree(self, path: str = "") -> list[dict]:
