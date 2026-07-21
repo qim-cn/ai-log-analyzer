@@ -55,13 +55,13 @@ LogUploader 完成                          ChatPanel "🔍 深入调查"按钮
   → LogPanel 出现                            或输入 /investigate 命令
     "🔬 深度排查"按钮                          → POST /api/agent/investigate
   → POST /api/agent/investigate              { session_id }
-    { log_id }（自动建新会话）                      │
+    { log_id }（复用日志所属会话）                    │
         └──────────────┬──────────────────────────┘
                        ▼
             SSE 流式返回排查过程
 ```
 
-- **API**：`POST /api/agent/investigate`，Body 二选一：`{log_id}`（新建会话）或 `{session_id}`（复用现有会话，报告生成时带上已有对话上下文）
+- **API**：`POST /api/agent/investigate`，Body 二选一：`{log_id}`（复用该日志所属会话 —— 日志在系统中必然归属于某会话）或 `{session_id}`（报告生成时带上已有对话上下文）
 - 鉴权、归属校验、限流复用现有中间件（`require_session_owner`、`rate_limiter`）
 
 ### SSE 事件格式
