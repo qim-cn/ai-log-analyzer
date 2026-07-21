@@ -12,6 +12,11 @@ from app.config.database import get_connection
 
 logger = logging.getLogger(__name__)
 
+# 已解决目录 helper 延迟导入，避免潜在循环依赖
+def _resolved_dir():
+    from app.services.obsidian_service import get_resolved_base
+    return get_resolved_base()
+
 # ── 产线测试常见错误模式（有序，越靠前匹配越精准）────────────────────
 
 TEST_FAILURE_PATTERNS: list[tuple[str, str, str]] = [
@@ -199,10 +204,8 @@ def try_local_analysis(query: str, log_snippet: str = "") -> tuple[str | None, s
 
 
 def search_resolved(query: str, limit: int = 3) -> list[dict]:
-    """从已解决目录搜历史案例"""
-    import os
-    from pathlib import Path
-    rd = Path("/resolved")
+    """从已解决目录搜历史案例（会读取配置的 resolved_path）"""
+    rd = _resolved_dir()
     if not rd.exists():
         return []
     results = []

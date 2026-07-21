@@ -15,7 +15,7 @@ from fastapi import APIRouter, Request
 
 from app.middlewares.error_handler import ValidationError
 from app.models.user import UserRole
-from app.services.obsidian_service import obsidian_service
+from app.services.obsidian_service import get_resolved_base, obsidian_service
 from app.types.obsidian_types import (
     CompileDraftRequest,
     ObsidianSettingsResponse,
@@ -262,13 +262,9 @@ async def update_settings(body: UpdateObsidianSettingsRequest, request: Request)
 
 from pathlib import Path
 
-BASE_RESOLVED = Path("/resolved")
-
 
 def _resolved_dir() -> Path:
-    config = obsidian_service.get_settings()
-    rp = (config.get("resolved_path") or "").strip().strip("/")
-    return BASE_RESOLVED / rp if rp else BASE_RESOLVED
+    return get_resolved_base()
 
 
 @router.get("/resolved/list", response_model=dict)

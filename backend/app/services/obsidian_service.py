@@ -54,6 +54,13 @@ def _get_settings() -> dict:
     }
 
 
+def get_resolved_base() -> Path:
+    """获取已解决记录根目录（含配置的 resolved_path）"""
+    config = _get_settings()
+    rp = config.get("resolved_path", "").strip().strip("/")
+    return Path("/resolved") / rp if rp else Path("/resolved")
+
+
 def _is_within(path: Path, base: Path) -> bool:
     """判断 path 是否位于 base 目录内（含 base 自身），防止路径穿越。"""
     try:
@@ -692,10 +699,8 @@ class ObsidianService:
         self, title: str, save_path: str, log_summary: str, log_snippet: str,
         analysis: str, repair_notes: str = "", user: str = "admin", body: str = "",
     ) -> dict:
-        """已解决 → /resolved/{resolved_path}/{save_path}/{标题}.md"""
-        config = _get_settings()
-        resolved_base = config.get("resolved_path", "").strip().strip("/")
-        base = Path("/resolved") / resolved_base if resolved_base else Path("/resolved")
+        """已解决 → /resolved/{resolved_path}/{save_path}/{title}.md"""
+        base = get_resolved_base()
         clean_path = save_path.strip().strip("/")
         target_dir = base / _sanitize_filename(clean_path) if clean_path else base
         target_dir.mkdir(parents=True, exist_ok=True)

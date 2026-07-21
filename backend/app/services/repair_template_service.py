@@ -45,11 +45,12 @@ class RepairTemplateService:
         return out
 
     def rebuild(self) -> int:
-        """扫描 /resolved 所有案例，重建模板库。返回模板条数。"""
+        """扫描已解决案例所有案例，重建模板库。返回模板条数。"""
+        from app.services.obsidian_service import get_resolved_base
         conn = get_connection()
         conn.execute("DELETE FROM repair_templates")
         counter: dict[tuple[str, str], int] = {}
-        base = Path('/resolved')
+        base = get_resolved_base()
         if base.exists():
             for md in base.rglob('*.md'):
                 try:
