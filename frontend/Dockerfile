@@ -1,4 +1,5 @@
-FROM node:20-alpine AS builder
+ARG NODE_IMAGE=node:20-alpine
+FROM ${NODE_IMAGE} AS builder
 
 WORKDIR /app
 
@@ -8,7 +9,8 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-FROM nginx:alpine
+ARG NGINX_IMAGE=nginx:alpine
+FROM ${NGINX_IMAGE}
 
 # 复制构建产物
 COPY --from=builder /app/dist /usr/share/nginx/html
