@@ -29,7 +29,7 @@ from app.middlewares.error_handler import AIError, ValidationError
 from app.models.message import MessageRole
 from app.services.ai_service import ai_service
 from app.services.context_manager import get_context_manager
-from app.services.local_analysis_service import try_local_analysis, feed_known_pattern, search_resolved
+from app.services.local_analysis_service import try_local_analysis, feed_known_pattern
 from app.services.log_service import log_service
 from app.services.message_service import message_service
 from app.types.message_types import SendMessageRequest

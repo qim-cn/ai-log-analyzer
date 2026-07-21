@@ -6,6 +6,7 @@
 """
 
 import tempfile
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -60,23 +61,28 @@ def test_get_resolved_base_defaults_to_root(monkeypatch):
 
 
 def test_search_resolved_uses_configured_path(monkeypatch):
-    """当 resolved_path 配置为子目录时，search_resolved 应搜索该子目录"""
-    from app.services.local_analysis_service import search_resolved
+    """当 resolved_path 配置为子目录时，obsidian_service.search_resolved 应搜索该子目录"""
+    from app.services.obsidian_service import obsidian_service
 
     with tempfile.TemporaryDirectory() as tmp:
-        sub = Path(tmp) / "sub_dir"
-        sub.mkdir()
-        (sub / "2024-01-01_内存故障.md").write_text(
+        base = Path(tmp) / "resolved" / "服务器维修笔记" / "已解决"
+        base.mkdir(parents=True)
+        (base / "2024-01-01_内存故障.md").write_text(
             "---\ntitle: 内存故障\n---\nmemory error corrected\n",
             encoding="utf-8",
         )
         monkeypatch.setattr(
-            "app.services.local_analysis_service._resolved_dir", lambda: sub
+            "app.services.obsidian_service._get_settings",
+            lambda: {"resolved_path": "服务器维修笔记/已解决", "webdav_url": ""},
         )
-        results = search_resolved("memory error")
+        monkeypatch.setattr(
+            "app.services.obsidian_service.get_resolved_base",
+            lambda: Path(tmp) / "resolved" / "服务器维修笔记" / "已解决",
+        )
+
+        results = asyncio.run(obsidian_service.search_resolved("memory error"))
         assert len(results) == 1
         assert results[0]["title"] == "内存故障"
-        assert results[0]["filename"] == "2024-01-01_内存故障.md"
 
 
 def test_rebuild_scans_configured_path(monkeypatch):

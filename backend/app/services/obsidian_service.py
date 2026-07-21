@@ -679,9 +679,15 @@ class ObsidianService:
         resolved: bool = False,
         body: str = "",
     ) -> dict:
-        """保存笔记。resolved=True -> 写入本地。body 非空则直接落盘正文，repair_notes 由用户填写"""
+        """保存笔记。
+        resolved=True 时，若已配置 WebDAV 则存到 WebDAV 的 resolved_path，
+        否则存到本地 /resolved。
+        """
         if resolved:
-            return self._save_resolved_local(title, save_path, log_summary, log_snippet, analysis, repair_notes, user, body)
+            if self._is_webdav_configured():
+                return await self._save_note_webdav(title, save_path, log_summary, log_snippet, analysis, repair_notes, user, True)
+            else:
+                return self._save_resolved_local(title, save_path, log_summary, log_snippet, analysis, repair_notes, user, body)
         if self._is_webdav_configured():
             return await self._save_note_webdav(title, save_path, log_summary, log_snippet, analysis, repair_notes, user, False)
         else:
@@ -763,6 +769,171 @@ class ObsidianService:
         except Exception as e:
             logger.error(f"Failed to save resolved note: {e}")
             return {"success": False, "filename": "", "message": f"保存失败: {e}"}
+
+    async def list_resolved(self) -> list[dict]:
+        """列出已解决记录。配置了 WebDAV 时从 WebDAV 的 resolved_path 读取，
+        否则从本地 /resolved 读取。"""
+        if self._is_webdav_configured():
+            return await self._list_resolved_webdav()
+        return self._list_resolved_local()
+
+    def _list_resolved_local(self) -> list[dict]:
+        """从本地 /resolved 列出已解决记录"""
+        rd = get_resolved_base()
+        files = []
+        if rd.exists():
+            for md in sorted(rd.rglob("*.md"), key=lambda p: p.name, reverse=True):
+                if md.name == "index.md" or ".obsidian" in md.parts or ".trash" in md.parts:
+                    continue
+                rel = md.relative_to(rd)
+                stat = md.stat()
+                model = str(rel.parent) if str(rel.parent) != "." else ""
+                files.append({
+                    "filename": str(rel),
+                    "title": md.stem,
+                    "model": model,
+                    "size": stat.st_size,
+                    "mtime": stat.st_mtime,
+                })
+        return files
+
+    async def _list_resolved_webdav(self) -> list[dict]:
+        """从 WebDAV 的 resolved_path 递归列出已解决记录"""
+        config = _get_settings()
+        auth = _webdav_auth(config["webdav_user"], config["webdav_pass"])
+        base_url = config["webdav_url"].rstrip("/")
+        resolved_path = config.get("resolved_path", "").strip("/")
+        if not resolved_path:
+            return []
+
+        dir_url = _make_webdav_url(base_url, resolved_path)
+        base_url_path = unquote(urlparse(base_url).path).rstrip("/") + "/"
+
+        try:
+            notes = await _webdav_walk_recursive(dir_url, auth, base_url, base_url_path)
+        except Exception as e:
+            logger.error(f"从 WebDAV 列出已解决记录失败: {e}")
+            return []
+
+        files = []
+        for note in notes:
+            filename = note["filename"]
+            rel_path = Path(filename)
+            model = str(rel_path.parent) if str(rel_path.parent) != "." else ""
+            title = rel_path.name.replace(".md", "")
+            files.append({
+                "filename": filename,
+                "title": title,
+                "model": model,
+                "size": 0,
+                "mtime": 0,
+            })
+        return files
+
+    async def get_resolved_file(self, filename: str) -> dict:
+        """读取已解决记录内容。"""
+        if self._is_webdav_configured():
+            return await self._get_resolved_file_webdav(filename)
+        return self._get_resolved_file_local(filename)
+
+    def _get_resolved_file_local(self, filename: str) -> dict:
+        """从本地读取已解决记录"""
+        rd = get_resolved_base().resolve()
+        try:
+            file_path = (rd / filename).resolve()
+        except OSError:
+            return {"code": 404, "message": "文件不存在", "data": None}
+        try:
+            file_path.relative_to(rd)
+        except ValueError:
+            return {"code": 404, "message": "文件不存在", "data": None}
+        if not file_path.exists() or not file_path.is_file():
+            return {"code": 404, "message": "文件不存在", "data": None}
+        content = file_path.read_text(encoding="utf-8")
+        return {"code": 0, "message": "success", "data": {"filename": filename, "content": content}}
+
+    async def _get_resolved_file_webdav(self, filename: str) -> dict:
+        """从 WebDAV 读取已解决记录"""
+        config = _get_settings()
+        auth = _webdav_auth(config["webdav_user"], config["webdav_pass"])
+        base_url = config["webdav_url"].rstrip("/")
+        file_url = _make_webdav_url(base_url, filename)
+
+        try:
+            content = await _webdav_get(file_url, auth)
+        except Exception as e:
+            logger.error(f"从 WebDAV 读取已解决记录失败: {e}")
+            return {"code": 500, "message": f"读取失败: {e}", "data": None}
+
+        if content is None:
+            return {"code": 404, "message": "文件不存在", "data": None}
+        return {"code": 0, "message": "success", "data": {"filename": filename, "content": content}}
+
+    async def delete_resolved_file(self, filename: str) -> dict:
+        """删除已解决记录（仅管理员）。"""
+        if self._is_webdav_configured():
+            return await self._delete_resolved_file_webdav(filename)
+        return self._delete_resolved_file_local(filename)
+
+    def _delete_resolved_file_local(self, filename: str) -> dict:
+        """从本地删除已解决记录"""
+        rd = get_resolved_base().resolve()
+        try:
+            file_path = (rd / filename).resolve()
+        except OSError:
+            return {"code": 404, "message": "文件不存在", "data": None}
+        try:
+            file_path.relative_to(rd)
+        except ValueError:
+            return {"code": 404, "message": "文件不存在", "data": None}
+        if not file_path.exists() or not file_path.is_file():
+            return {"code": 404, "message": "文件不存在", "data": None}
+        try:
+            file_path.unlink()
+            return {"code": 0, "message": "已删除", "data": None}
+        except Exception as e:
+            return {"code": 500, "message": f"删除失败: {e}", "data": None}
+
+    async def _delete_resolved_file_webdav(self, filename: str) -> dict:
+        """从 WebDAV 删除已解决记录"""
+        config = _get_settings()
+        auth = _webdav_auth(config["webdav_user"], config["webdav_pass"])
+        base_url = config["webdav_url"].rstrip("/")
+        file_url = _make_webdav_url(base_url, filename)
+
+        try:
+            async with httpx.AsyncClient() as client:
+                r = await client.request("DELETE", file_url, auth=auth, timeout=30)
+            if r.status_code in (200, 204):
+                return {"code": 0, "message": "已删除", "data": None}
+            else:
+                return {"code": 500, "message": f"删除失败: HTTP {r.status_code}", "data": None}
+        except Exception as e:
+            logger.error(f"从 WebDAV 删除已解决记录失败: {e}")
+            return {"code": 500, "message": f"删除失败: {e}", "data": None}
+
+    async def search_resolved(self, query: str, limit: int = 3) -> list[dict]:
+        """搜索已解决记录（WebDAV 优先，本地回退）"""
+        files = await self.list_resolved()
+        words = query.lower().split()
+        results = []
+        for f in files:
+            if f["filename"].endswith("index.md") or ".obsidian" in f["filename"] or ".trash" in f["filename"]:
+                continue
+            content_resp = await self.get_resolved_file(f["filename"])
+            if content_resp.get("code") != 0:
+                continue
+            content = content_resp["data"]["content"][:2000]
+            score = sum(1 for w in words if w in content.lower())
+            if score > 0:
+                title = f["title"]
+                for line in content.split("\n"):
+                    if line.startswith("title:"):
+                        title = line.split(":", 1)[1].strip().strip('"')
+                        break
+                results.append({"filename": f["filename"], "title": title, "score": score})
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:limit]
 
     async def _save_note_webdav(
         self, title: str, save_path: str, log_summary: str, log_snippet: str,

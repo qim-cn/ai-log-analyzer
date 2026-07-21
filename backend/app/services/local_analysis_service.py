@@ -12,15 +12,10 @@ from app.config.database import get_connection
 
 logger = logging.getLogger(__name__)
 
-# 已解决目录 helper 延迟导入，避免潜在循环依赖
-def _resolved_dir():
-    from app.services.obsidian_service import get_resolved_base
-    return get_resolved_base()
-
-# ── 产线测试常见错误模式（有序，越靠前匹配越精准）────────────────────
+# 产线测试常见错误模式（有序，越靠前匹配越精准）──────────────────────────────
 
 TEST_FAILURE_PATTERNS: list[tuple[str, str, str]] = [
-    # (日志行匹配正则, 故障类型, 排查建议)
+
 
     # PCIe 链路宽度相关
     (r"(?i)pci.*x(\d+).*vs.*x(\d+).*fail", "PCIe链路降宽",
@@ -204,31 +199,10 @@ def try_local_analysis(query: str, log_snippet: str = "") -> tuple[str | None, s
 
 
 def search_resolved(query: str, limit: int = 3) -> list[dict]:
-    """从已解决目录搜历史案例（会读取配置的 resolved_path）"""
-    rd = _resolved_dir()
-    if not rd.exists():
-        return []
-    results = []
-    words = query.lower().split()
-    for md in rd.rglob("*.md"):
-        if md.name == "index.md" or ".obsidian" in md.parts:
-            continue
-        try:
-            content = md.read_text(encoding="utf-8")[:2000]
-        except Exception:
-            continue
-        score = sum(1 for w in words if w in content.lower())
-        if score > 0:
-            # 提取标题
-            title = md.stem
-            for line in content.split("\n"):
-                if line.startswith("title:"):
-                    title = line.split(":", 1)[1].strip().strip('"')
-                    break
-            rel = md.relative_to(rd)
-            results.append({"filename": str(rel), "title": title, "score": score})
-    results.sort(key=lambda x: x["score"], reverse=True)
-    return results[:limit]
+    """从已解决目录搜历史案例（会读取配置的 resolved_path，WebDAV 优先）"""
+    import asyncio
+    from app.services.obsidian_service import obsidian_service
+    return asyncio.run(obsidian_service.search_resolved(query, limit))
 
 
 def feed_known_pattern(log_text: str, session_id: str | None = None) -> None:

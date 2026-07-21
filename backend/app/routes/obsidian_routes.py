@@ -257,55 +257,21 @@ async def update_settings(body: UpdateObsidianSettingsRequest, request: Request)
 
 
 # ============================================================
-# 已解决记录（本地文件系统，不依赖 WebDAV）
+# 已解决记录（WebDAV 优先，本地回退）
 # ============================================================
-
-from pathlib import Path
-
-
-def _resolved_dir() -> Path:
-    return get_resolved_base()
 
 
 @router.get("/resolved/list", response_model=dict)
 async def list_resolved():
-    """列出已解决的故障记录（支持子目录）"""
-    rd = _resolved_dir()
-    files = []
-    if rd.exists():
-        for md in sorted(rd.rglob("*.md"), key=lambda p: p.name, reverse=True):
-            if md.name == "index.md" or ".obsidian" in md.parts or ".trash" in md.parts:
-                continue
-            rel = md.relative_to(rd)
-            stat = md.stat()
-            model = str(rel.parent) if str(rel.parent) != "." else ""
-            files.append({
-                "filename": str(rel),
-                "title": md.stem,
-                "model": model,
-                "size": stat.st_size,
-                "mtime": stat.st_mtime,
-            })
+    """列出已解决的故障记录（WebDAV 优先，本地回退）"""
+    files = await obsidian_service.list_resolved()
     return {"code": 0, "message": "success", "data": files}
 
 
 @router.get("/resolved/file", response_model=dict)
 async def get_resolved_file(filename: str):
     """读取已解决记录的内容"""
-    rd = _resolved_dir().resolve()
-    try:
-        file_path = (rd / filename).resolve()
-    except OSError:
-        return {"code": 404, "message": "文件不存在", "data": None}
-    # 安全校验：解析后必须在 resolved 目录内（防止 ../ 穿越）
-    try:
-        file_path.relative_to(rd)
-    except ValueError:
-        return {"code": 404, "message": "文件不存在", "data": None}
-    if not file_path.exists() or not file_path.is_file():
-        return {"code": 404, "message": "文件不存在", "data": None}
-    content = file_path.read_text(encoding="utf-8")
-    return {"code": 0, "message": "success", "data": {"filename": filename, "content": content}}
+    return await obsidian_service.get_resolved_file(filename)
 
 
 @router.delete("/resolved/file", response_model=dict)
@@ -314,22 +280,7 @@ async def delete_resolved_file(filename: str, request: Request):
     user = request.state.user
     if user.role != UserRole.ADMIN:
         return {"code": 403, "message": "权限不足，仅管理员可操作", "data": None}
-    rd = _resolved_dir().resolve()
-    try:
-        file_path = (rd / filename).resolve()
-    except OSError:
-        return {"code": 404, "message": "文件不存在", "data": None}
-    try:
-        file_path.relative_to(rd)
-    except ValueError:
-        return {"code": 404, "message": "文件不存在", "data": None}
-    if not file_path.exists() or not file_path.is_file():
-        return {"code": 404, "message": "文件不存在", "data": None}
-    try:
-        file_path.unlink()
-        return {"code": 0, "message": "已删除", "data": None}
-    except Exception as e:
-        return {"code": 500, "message": f"删除失败: {e}", "data": None}
+    return await obsidian_service.delete_resolved_file(filename)
 
 @router.post("/feedback", response_model=dict)
 async def case_feedback(body: dict, request: Request):
