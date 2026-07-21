@@ -175,3 +175,59 @@ async def run_batch_pattern(ctx: InvestigationContext, emit: Emit) -> StepResult
         )
     emit(f"检查了 {len(others)} 个同机型会话，未发现相同失败模式")
     return StepResult(status="ok", summary=f"单台偶发（检查 {len(others)} 个同机型会话）")
+
+
+async def run_knowledge_lookup(ctx: InvestigationContext, emit: Emit) -> StepResult:
+    """步骤 4：知识库与维修模板 —— 查历史案例 + 匹配维修操作模板
+
+    两个数据源各自独立容错：一个失败不影响另一个，步骤整体不 failed。
+    """
+    from app.services.knowledge_feedback import knowledge_feedback
+    from app.services.obsidian_service import obsidian_service  # 懒加载
+    from app.services.repair_template_service import repair_template_service
+
+    # 知识库历史案例（按错误模式检索）
+    if ctx.top_patterns:
+        try:
+            query = " ".join(p[:60] for p in ctx.top_patterns[:2])
+            _text, refs = await knowledge_feedback.search_and_inject(
+                query, obsidian_service
+            )
+            ctx.knowledge_refs = [
+                {
+                    "filename": r.get("filename", ""),
+                    "title": r.get("title", ""),
+                    "snippet": (r.get("snippet") or "")[:300],
+                }
+                for r in (refs or [])[:KNOWLEDGE_REFS_LIMIT]
+            ]
+            if ctx.knowledge_refs:
+                emit(f"知识库命中 {len(ctx.knowledge_refs)} 条历史案例")
+            else:
+                emit("知识库未命中相关案例")
+        except Exception as e:
+            logger.warning(f"知识库检索失败: {e}")
+            ctx.knowledge_refs = []
+            emit("知识库检索不可用，已跳过")
+
+    # 维修操作模板（按机型过滤，含通用模板）
+    try:
+        templates = repair_template_service.list(
+            model=ctx.session_model, limit=REPAIR_TEMPLATES_LIMIT
+        )
+        ctx.repair_templates = [
+            {"text": t["text"], "count": t["count"]} for t in templates
+        ]
+        if ctx.repair_templates:
+            emit(f"匹配到 {len(ctx.repair_templates)} 条维修操作模板")
+    except Exception as e:
+        logger.warning(f"维修模板查询失败: {e}")
+        ctx.repair_templates = []
+        emit("维修模板查询不可用，已跳过")
+
+    if not ctx.knowledge_refs and not ctx.repair_templates:
+        return StepResult(status="ok", summary="知识库与模板均无命中")
+    return StepResult(
+        status="ok",
+        summary=f"知识库 {len(ctx.knowledge_refs)} 条 / 模板 {len(ctx.repair_templates)} 条",
+    )

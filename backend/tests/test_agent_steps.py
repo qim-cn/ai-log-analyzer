@@ -259,3 +259,110 @@ async def test_batch_pattern_skipped_without_model():
 
     assert result.status == "skipped"
     assert "机型" in result.summary
+
+
+# ---- 步骤 4：知识库与维修模板 ----
+
+from app.services.agent_steps import run_knowledge_lookup
+
+
+class _FakeKnowledgeFeedback:
+    def __init__(self, refs):
+        self._refs = refs
+
+    async def search_and_inject(self, query, obsidian_service):
+        return ("注入文本", self._refs)
+
+
+def _patch_knowledge(monkeypatch, refs, templates):
+    monkeypatch.setitem(
+        sys.modules,
+        "app.services.knowledge_feedback",
+        SimpleNamespace(knowledge_feedback=_FakeKnowledgeFeedback(refs)),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "app.services.obsidian_service",
+        SimpleNamespace(obsidian_service=object()),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "app.services.repair_template_service",
+        SimpleNamespace(
+            repair_template_service=SimpleNamespace(
+                list=lambda model=None, limit=50: templates[:limit]
+            )
+        ),
+    )
+
+
+async def test_knowledge_lookup_hits(monkeypatch):
+    _patch_knowledge(
+        monkeypatch,
+        refs=[{"filename": "case1.md", "title": "DIMM 故障案例", "snippet": "s" * 400}],
+        templates=[{"text": "重插拔内存条", "model": "7500S", "count": 3}],
+    )
+    ctx = _ctx(content="ERROR x\n", model="7500S")
+    ctx.top_patterns = ["ERROR x"]
+    messages, emit = _collector()
+
+    result = await run_knowledge_lookup(ctx, emit)
+
+    assert result.status == "ok"
+    assert len(ctx.knowledge_refs) == 1
+    assert ctx.knowledge_refs[0]["title"] == "DIMM 故障案例"
+    # snippet 截断到 300 字符
+    assert len(ctx.knowledge_refs[0]["snippet"]) == 300
+    assert ctx.repair_templates == [{"text": "重插拔内存条", "count": 3}]
+
+
+async def test_knowledge_lookup_no_hits(monkeypatch):
+    _patch_knowledge(monkeypatch, refs=[], templates=[])
+    ctx = _ctx(content="ERROR x\n")
+    ctx.top_patterns = ["ERROR x"]
+    messages, emit = _collector()
+
+    result = await run_knowledge_lookup(ctx, emit)
+
+    assert result.status == "ok"
+    assert "均无命中" in result.summary
+    assert ctx.knowledge_refs == []
+    assert ctx.repair_templates == []
+
+
+async def test_knowledge_lookup_kb_failure_still_gets_templates(monkeypatch):
+    """知识库抛异常不阻断：模板照常查询，步骤整体 ok"""
+
+    class _FailKF:
+        async def search_and_inject(self, query, obsidian_service):
+            raise RuntimeError("WebDAV down")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "app.services.knowledge_feedback",
+        SimpleNamespace(knowledge_feedback=_FailKF()),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "app.services.obsidian_service",
+        SimpleNamespace(obsidian_service=object()),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "app.services.repair_template_service",
+        SimpleNamespace(
+            repair_template_service=SimpleNamespace(
+                list=lambda model=None, limit=50: [{"text": "重插拔内存条", "model": "", "count": 1}]
+            )
+        ),
+    )
+    ctx = _ctx(content="ERROR x\n")
+    ctx.top_patterns = ["ERROR x"]
+    messages, emit = _collector()
+
+    result = await run_knowledge_lookup(ctx, emit)
+
+    assert result.status == "ok"
+    assert ctx.knowledge_refs == []
+    assert len(ctx.repair_templates) == 1
+    assert any("不可用" in m for m in messages)
