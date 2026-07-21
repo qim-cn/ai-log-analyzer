@@ -37,3 +37,7 @@ grafana-data/
 
 # Build
 *.log
+
+# Build tarballs
+*.tar
+*.tar.gz
