@@ -15,7 +15,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 import httpx
 
@@ -175,6 +175,45 @@ async def _webdav_list(url: str, auth: httpx.BasicAuth | None) -> list[dict]:
         })
 
     return items
+
+
+async def _webdav_walk_recursive(url: str, auth: httpx.BasicAuth | None, base_url: str, vault_path: str) -> list[dict]:
+    """递归遍历 WebDAV vault_path 下的所有 .md 笔记（包含子目录）。
+
+    返回的 filename/path 均为 vault_path 内的相对路径，以便
+    get_note_content 能正确读取子目录中的文件。
+    """
+    items = await _webdav_list(url, auth)
+    notes = []
+
+    base_url_path = unquote(urlparse(base_url).path).rstrip("/") + "/"
+    vault_prefix = (base_url_path + vault_path.strip("/")).rstrip("/") + "/"
+
+    for item in items:
+        name = item["name"]
+        href = unquote(item["href"])
+        # 跳过目录本身
+        if href.rstrip("/") == url.rstrip("/"):
+            continue
+
+        if item.get("is_collection"):
+            sub_url = _make_webdav_url(base_url, href.lstrip("/"))
+            notes.extend(await _webdav_walk_recursive(sub_url, auth, base_url, vault_path))
+        elif name.endswith(".md") and name != "index.md":
+            rel = href.removeprefix(vault_prefix).lstrip("/")
+            if not rel:
+                rel = name
+            parts = name.replace(".md", "").split("_", 1)
+            date = parts[0] if len(parts) > 0 else ""
+            title = parts[1] if len(parts) > 1 else name
+            notes.append({
+                "filename": rel,
+                "path": rel,
+                "date": date,
+                "title": title,
+            })
+
+    return notes
 
 
 def _sanitize_filename(title: str) -> str:
@@ -802,7 +841,7 @@ updated: {datetime.utcnow().isoformat()}Z
             return self._local_list_notes()
 
     async def _list_notes_webdav(self) -> list[dict]:
-        """通过 WebDAV 获取笔记列表"""
+        """通过 WebDAV 递归获取笔记列表（包含子目录）"""
         config = _get_settings()
 
         auth = _webdav_auth(config["webdav_user"], config["webdav_pass"])
@@ -811,22 +850,12 @@ updated: {datetime.utcnow().isoformat()}Z
 
         dir_url = _make_webdav_url(base_url, vault_path)
         try:
-            items = await _webdav_list(dir_url, auth)
+            notes = await _webdav_walk_recursive(dir_url, auth, base_url, vault_path)
         except AppError:
             raise
         except Exception as e:
             logger.error(f"列出笔记失败 (WebDAV 网络异常): {e}")
             raise AppError("Obsidian 知识库连接失败，请检查 WebDAV 服务是否可达")
-
-        notes = []
-        for item in items:
-            name = item["name"]
-            if item.get("is_collection") or name == "index.md":
-                continue
-            parts = name.replace(".md", "").split("_", 1)
-            date = parts[0] if len(parts) > 0 else ""
-            title = parts[1] if len(parts) > 1 else name
-            notes.append({"filename": name, "date": date, "title": title})
 
         notes.sort(key=lambda x: x["date"], reverse=True)
         return notes
