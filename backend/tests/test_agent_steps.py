@@ -79,3 +79,72 @@ async def test_error_extraction_empty_content_fails():
     result = await run_error_extraction(ctx, emit)
 
     assert result.status == "failed"
+
+
+# ---- 步骤 2：相似案例检索 ----
+
+import sys
+from types import SimpleNamespace
+
+from app.services.agent_steps import run_similar_cases
+
+
+class _FakeVectorStore:
+    """假向量库：search_similar 返回固定结果"""
+
+    def __init__(self, results):
+        self._results = results
+
+    async def search_similar(self, text, limit=5, exclude_id=None):
+        return self._results[:limit]
+
+
+def _patch_vector_store(monkeypatch, results):
+    """用 sys.modules 注入假模块，避免真 import chromadb"""
+    monkeypatch.setitem(
+        sys.modules,
+        "app.services.vector_store",
+        SimpleNamespace(vector_store=_FakeVectorStore(results)),
+    )
+
+
+async def test_similar_cases_found(monkeypatch):
+    _patch_vector_store(monkeypatch, [
+        {"log_id": "old-1", "similarity": 0.92, "metadata": {}, "preview": "x" * 600},
+        {"log_id": "old-2", "similarity": 0.71, "metadata": {}, "preview": "short"},
+    ])
+    ctx = _ctx(content="ERROR DIMM A2 training failed\n")
+    ctx.top_patterns = ["ERROR DIMM A2 training failed"]
+    messages, emit = _collector()
+
+    result = await run_similar_cases(ctx, emit)
+
+    assert result.status == "ok"
+    assert len(ctx.similar_cases) == 2
+    assert ctx.similar_cases[0]["similarity"] == 0.92
+    # 预览截断到 500 字符
+    assert len(ctx.similar_cases[0]["preview"]) == 500
+    assert any("0.92" in m for m in messages)
+
+
+async def test_similar_cases_empty(monkeypatch):
+    _patch_vector_store(monkeypatch, [])
+    ctx = _ctx(content="ERROR x\n")
+    ctx.top_patterns = ["ERROR x"]
+    messages, emit = _collector()
+
+    result = await run_similar_cases(ctx, emit)
+
+    assert result.status == "ok"
+    assert ctx.similar_cases == []
+    assert "无相似" in result.summary
+
+
+async def test_similar_cases_skipped_without_patterns():
+    ctx = _ctx(content="INFO ok\n")
+    ctx.top_patterns = []
+    messages, emit = _collector()
+
+    result = await run_similar_cases(ctx, emit)
+
+    assert result.status == "skipped"

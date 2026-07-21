@@ -82,3 +82,37 @@ async def run_error_extraction(ctx: InvestigationContext, emit: Emit) -> StepRes
     if total == 0:
         return StepResult(status="ok", summary="未发现错误行，将生成日志概况报告")
     return StepResult(status="ok", summary=f"{total} 行错误 / {n_clusters} 个模式")
+
+
+async def run_similar_cases(ctx: InvestigationContext, emit: Emit) -> StepResult:
+    """步骤 2：相似案例检索 —— 全局向量库找相似历史日志"""
+    if not ctx.top_patterns:
+        return StepResult(status="skipped", summary="无错误模式，跳过相似案例检索")
+
+    from app.services.vector_store import vector_store  # 懒加载（chromadb 重）
+
+    query = "\n".join(ctx.top_patterns)
+    exclude_id = ctx.logs[0].id if ctx.logs else None
+    results = await vector_store.search_similar(
+        query, limit=SIMILAR_CASES_LIMIT, exclude_id=exclude_id
+    )
+
+    ctx.similar_cases = [
+        {
+            "log_id": r["log_id"],
+            "similarity": r["similarity"],
+            "preview": (r.get("preview") or "")[:SIMILAR_PREVIEW_CHARS],
+        }
+        for r in results[:SIMILAR_CASES_LIMIT]
+    ]
+
+    if not ctx.similar_cases:
+        emit("向量库中没有相似历史日志")
+        return StepResult(status="ok", summary="无相似历史案例")
+
+    top = ctx.similar_cases[0]["similarity"]
+    emit(f"找到 {len(ctx.similar_cases)} 个相似案例，最高相似度 {top:.2f}")
+    return StepResult(
+        status="ok",
+        summary=f"{len(ctx.similar_cases)} 个相似案例（最高 {top:.2f}）",
+    )
