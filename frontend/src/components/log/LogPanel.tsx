@@ -10,6 +10,7 @@ import {
   FileText,
   ChevronDown,
   ChevronUp,
+  Microscope,
 } from 'lucide-react';
 import { LogUploader } from './LogUploader';
 import { LogFileList } from './LogFileList';
@@ -19,6 +20,7 @@ import { ErrorClusterPanel } from './ErrorClusterPanel';
 import { MaskingMapButton } from './MaskingMapButton';
 import { SimilarLogsPanel } from './SimilarLogsPanel';
 import { useLogStore, useChatStore } from '@/stores';
+import { useInvestigationStore } from '@/stores/investigationStore';
 
 interface LogPanelProps {
   sessionId: string;
@@ -26,6 +28,7 @@ interface LogPanelProps {
 
 export function LogPanel({ sessionId }: LogPanelProps) {
   const [showSimilar, setShowSimilar] = useState(false);
+  const startInvestigation = useInvestigationStore((s) => s.start);
 
   const {
     logFiles,
@@ -82,9 +85,18 @@ export function LogPanel({ sessionId }: LogPanelProps) {
 
       {/* Content */}
       <>
-          {/* Upload */}
-          <div className="p-3 border-b border-border">
+          {/* Upload + 深度排查入口 */}
+          <div className="p-3 border-b border-border space-y-2">
             <LogUploader sessionId={sessionId} />
+            {logFiles.length > 0 && (
+              <button
+                onClick={() => startInvestigation(sessionId)}
+                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+              >
+                <Microscope size={13} />
+                深度排查
+              </button>
+            )}
           </div>
 
           {/* File List or Viewer */}

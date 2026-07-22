@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { Copy, Check, Paperclip, FileText, GitCompareArrows } from 'lucide-react';
+import { Copy, Check, Paperclip, FileText, GitCompareArrows, Microscope } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { SaveToKnowledgeButton } from './SaveToKnowledgeButton';
 import { AnomalyBanner } from './AnomalyBanner';
@@ -12,6 +12,8 @@ import { ThinkingBubble } from './ThinkingBubble';
 import { ChatInput } from './ChatInput';
 import { ExportButton } from '@/components/export/ExportButton';
 import { ComparePanel } from '@/components/compare/ComparePanel';
+import { InvestigationView } from '@/components/agent/InvestigationView';
+import { useInvestigationStore } from '@/stores/investigationStore';
 import { useChatStore, useSessionStore, useLogStore, useQuickPromptStore } from '@/stores';
 import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE } from '@/constants';
 import { cn, formatFileSize, analyzeUploadedLog } from '@/utils';
@@ -42,6 +44,8 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
   const currentSession = sessions.find((s) => s.id === sessionId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showCompare, setShowCompare] = useState(false);
+  const investActive = useInvestigationStore((s) => s.active);
+  const startInvestigation = useInvestigationStore((s) => s.start);
 
   useEffect(() => {
     // 切换会话时取消上一个会话仍在进行的流式回复，避免旧 chunk 串到新会话
@@ -56,6 +60,13 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
   }, [messages, streamingContent]);
 
   const handleSend = async (content: string) => {
+    // /investigate 命令：触发 AI 自主排查
+    if (content.trim() === '/investigate') {
+      if (logFiles.length > 0 && !streaming) {
+        await startInvestigation(sessionId);
+      }
+      return;
+    }
     try {
       await sendMessage(sessionId, content);
     } catch (error) {
@@ -122,6 +133,14 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
             {copied ? <Check size={15} className="text-success" /> : <Copy size={15} />}
           </button>
           <ExportButton sessionId={sessionId} />
+          <button
+            onClick={() => startInvestigation(sessionId)}
+            disabled={logFiles.length === 0 || streaming}
+            className="p-1.5 hover:bg-muted rounded-lg transition-colors disabled:opacity-30"
+            title="AI 自主排查"
+          >
+            <Microscope size={15} />
+          </button>
           {logFiles.length >= 2 && (
             <button
               onClick={() => setShowCompare(!showCompare)}
@@ -139,7 +158,10 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
 
       <AnomalyBanner sessionId={sessionId} />
 
-      {/* Messages */}
+      {/* Messages / 自主排查视图 */}
+      {investActive ? (
+        <InvestigationView />
+      ) : (
       <div className="flex-1 overflow-y-auto">
         {loading && messages.length === 0 ? (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -184,6 +206,7 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
           </div>
         )}
       </div>
+      )}
 
       {/* 已上传文件条 */}
       {logFiles.length > 0 && (
