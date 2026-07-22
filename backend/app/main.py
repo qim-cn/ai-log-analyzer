@@ -171,6 +171,7 @@ register_error_handlers(app)
 # 路由注册
 # ============================================================
 
+from app.routes.agent_routes import router as agent_router
 from app.routes.anomaly_routes import router as anomaly_router
 from app.routes.error_cluster_routes import router as error_cluster_router
 from app.routes.repair_template_routes import router as repair_template_router
@@ -192,6 +193,7 @@ from app.routes.timeline_routes import router as timeline_router
 from app.routes.user_routes import router as user_router
 from app.routes.webhook_routes import router as webhook_router
 
+app.include_router(agent_router, prefix="/api/agent", tags=["AI 自主排查"])
 app.include_router(anomaly_router, prefix="/api/anomaly", tags=["异常检测"])
 app.include_router(repair_template_router, prefix="/api/repair-templates", tags=["维修模板"])
 app.include_router(auth_router, prefix="/api/auth", tags=["认证"])
