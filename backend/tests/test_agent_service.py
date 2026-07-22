@@ -5,8 +5,6 @@ agent_service 流水线 runner 单元测试
 import sys
 from types import SimpleNamespace
 
-import pytest
-
 from app.services import agent_service as agent_module
 from app.services.agent_service import AgentService
 from app.services.agent_steps import InvestigationContext, StepResult
@@ -46,6 +44,17 @@ class _FailAI:
         async def gen():
             raise RuntimeError("AI down")
             yield  # pragma: no cover  # 使其成为 async generator
+        return gen()
+
+
+class _PartialFailAI:
+    """先吐一个 chunk 再失败，覆盖'生成中断'路径"""
+
+    def chat_stream(self, messages, temperature=0.7):
+        async def gen():
+            yield "## 🎯 故障部件定位\n部分内容"
+            raise RuntimeError("AI mid-stream down")
+
         return gen()
 
 
@@ -110,6 +119,25 @@ async def test_pipeline_ai_failure_fallback_report(monkeypatch):
     assert "本地兜底" in report_text
     assert events[-1]["type"] == "done"
     assert saved and "本地兜底" in saved[0]
+    # AI 失败路径亦须释放并发锁
+    assert not service.is_active("u1")
+
+
+async def test_pipeline_ai_partial_failure_appends_interrupt_note(monkeypatch):
+    _patch_common(monkeypatch, _PartialFailAI())
+    monkeypatch.setattr(agent_module, "STEPS", [(1, "步骤一", _ok_step)])
+    service = AgentService()
+
+    events = await _collect(service)
+
+    report_text = "".join(e.get("content", "") for e in events if e["type"] == "report_chunk")
+    # 已有部分内容时追加"生成中断"提示
+    assert "生成中断" in report_text
+    # 部分内容被保留
+    assert "部分内容" in report_text
+    assert events[-1]["type"] == "done"
+    # 中断路径同样释放并发锁
+    assert not service.is_active("u1")
 
 
 async def test_pipeline_concurrent_user_rejected(monkeypatch):
