@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Search, FileText, Folder, FolderOpen, ChevronRight, ChevronDown,
-  RefreshCw, Terminal, CheckCircle2, Trash2,
+  RefreshCw, Terminal, CheckCircle2, Trash2, BookOpen, Loader2,
 } from 'lucide-react';
 import { obsidianService, type FileTreeNode, type ResolvedFile } from '@/services/obsidianService';
 import { MarkdownRenderer } from '@/components/knowledge/MarkdownRenderer';
@@ -128,33 +128,37 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* Header */}
-      <div className="h-12 border-b border-border bg-card flex items-center px-4 gap-3">
+      <div className="h-12 border-b border-border bg-card flex items-center px-4 gap-3 shrink-0">
         <button onClick={onBack} className="p-1.5 hover:bg-muted rounded-lg transition-colors">
           <ArrowLeft size={18} />
         </button>
         <div className="font-semibold text-sm">知识库</div>
 
-        {/* View Tabs */}
-        <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
+        {/* View Tabs —— 统一图标 */}
+        <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
           <button onClick={() => setActiveView('resolved')} className={cn(
-            'px-3 py-1 rounded-md text-xs transition-colors flex items-center gap-1',
-            activeView === 'resolved' ? 'bg-background text-foreground shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'
+            'px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5',
+            activeView === 'resolved' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           )}>
-            <CheckCircle2 size={12} /> 已解决
+            <CheckCircle2 size={12} className="text-emerald-500" /> 已解决
           </button>
           <button onClick={() => setActiveView('obsidian')} className={cn(
-            'px-3 py-1 rounded-md text-xs transition-colors',
-            activeView === 'obsidian' ? 'bg-background text-foreground shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'
-          )}>Obsidian</button>
+            'px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5',
+            activeView === 'obsidian' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          )}>
+            <BookOpen size={12} /> Obsidian
+          </button>
           <button onClick={() => setActiveView('linux')} className={cn(
-            'px-3 py-1 rounded-md text-xs transition-colors flex items-center gap-1',
-            activeView === 'linux' ? 'bg-background text-foreground shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'
-          )}><Terminal size={12} />Linux</button>
+            'px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5',
+            activeView === 'linux' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          )}>
+            <Terminal size={12} /> Linux
+          </button>
         </div>
 
         <div className="flex-1" />
         <button onClick={refreshAll} className="p-1.5 hover:bg-muted rounded-lg transition-colors" title="刷新">
-          <RefreshCw size={15} />
+          <RefreshCw size={15} className="text-muted-foreground" />
         </button>
       </div>
 
@@ -168,17 +172,23 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
       {/* 已解决面板 */}
       {activeView === 'resolved' && (
         <div className="flex-1 flex overflow-hidden">
-          <aside className="w-64 border-r border-border flex flex-col bg-card">
-            <div className="p-2 border-b border-border text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-              <CheckCircle2 size={12} className="text-emerald-500" />
-              已解决故障记录
-              <span className="opacity-60">({resolvedFiles.length})</span>
+          <aside className="w-64 border-r border-border flex flex-col bg-card/60">
+            <div className="px-3 py-2.5 border-b border-border">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                <CheckCircle2 size={13} className="text-emerald-500" />
+                已解决故障
+              </div>
+              <div className="text-[11px] text-muted-foreground/50 mt-0.5">共 {resolvedFiles.length} 条记录</div>
             </div>
-            <div className="flex-1 overflow-y-auto p-2">
+            <div className="flex-1 overflow-y-auto p-1.5">
               {resolvedLoading ? (
-                <div className="text-center text-muted-foreground py-4 text-xs">加载中...</div>
+                <div className="flex items-center justify-center py-12 text-xs text-muted-foreground/50">加载中…</div>
               ) : resolvedFiles.length === 0 ? (
-                <div className="text-center text-muted-foreground py-8 text-xs">暂无已解决记录</div>
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <CheckCircle2 size={28} className="text-muted-foreground/15 mb-2" />
+                  <div className="text-xs text-muted-foreground/50">暂无已解决记录</div>
+                  <div className="text-[10px] text-muted-foreground/30 mt-0.5">在聊天中将案例保存到知识库</div>
+                </div>
               ) : (
                 <div className="space-y-0.5">
                   {resolvedFiles.map((f) => (
@@ -186,29 +196,29 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
                       <button
                         onClick={() => fetchResolvedContent(f.filename)}
                         className={cn(
-                          'flex-1 flex items-center gap-2 px-2 py-2 rounded-lg text-left transition-colors',
+                          'flex-1 flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all',
                           selectedPath === f.filename
-                            ? 'bg-primary/10 text-primary border border-primary/20'
-                            : 'hover:bg-muted'
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                            : 'hover:bg-muted/60'
                         )}
                       >
-                        <FileText size={13} className={selectedPath === f.filename ? 'text-primary' : 'text-muted-foreground'} />
+                        <FileText size={13} className={cn('shrink-0', selectedPath === f.filename ? 'text-emerald-500' : 'text-muted-foreground/60')} />
                         <div className="min-w-0 flex-1">
-                          <div className="text-xs truncate">{f.title}</div>
-                          {f.model && (
-                            <span className="text-[9px] px-1 py-0.5 rounded bg-primary/10 text-primary mt-0.5 inline-block">
-                              {f.model}
-                            </span>
-                          )}
+                          <div className="text-[12px] truncate font-medium">{f.title}</div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {f.model ? (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground font-mono">{f.model}</span>
+                            ) : <span className="text-[10px] text-muted-foreground/40 italic">无型号</span>}
+                          </div>
                         </div>
                       </button>
                       {isAdmin && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDeleteResolved(f.filename); }}
-                          className="p-1 hover:bg-red-500/10 rounded opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                          className="p-1 hover:bg-red-500/10 rounded-md opacity-0 group-hover:opacity-100 transition-all shrink-0 ml-0.5"
                           title="删除"
                         >
-                          <Trash2 size={12} className="text-muted-foreground hover:text-destructive" />
+                          <Trash2 size={12} className="text-muted-foreground/40 hover:text-destructive transition-colors" />
                         </button>
                       )}
                     </div>
@@ -217,24 +227,32 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
               )}
             </div>
           </aside>
-          <main className="flex-1 overflow-y-auto">
+          <main className="flex-1 overflow-y-auto bg-background">
             {loadingContent ? (
-              <div className="flex items-center justify-center h-full text-muted-foreground text-sm">加载中...</div>
+              <div className="flex items-center justify-center h-full">
+                <div className="flex flex-col items-center gap-2 text-muted-foreground/50">
+                  <Loader2 size={20} className="animate-spin" />
+                  <span className="text-xs">加载中…</span>
+                </div>
+              </div>
             ) : fileContent && selectedPath ? (
               <div className="max-w-[800px] mx-auto px-8 py-6">
                 <MarkdownRenderer content={fileContent} onLinkClick={handleFileClick} />
               </div>
             ) : (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
+              <div className="flex items-center justify-center h-full">
                 <div className="text-center">
-                  <CheckCircle2 size={48} className="mx-auto mb-4 opacity-20 text-emerald-500" />
-                  <div className="text-sm">选择左侧已解决记录查看详情</div>
+                  <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
+                    <CheckCircle2 size={26} className="text-emerald-500/40" />
+                  </div>
+                  <div className="text-sm font-medium text-muted-foreground">选择左侧已解决记录</div>
+                  <div className="text-xs text-muted-foreground/40 mt-1">查看详细故障排查过程</div>
                 </div>
               </div>
             )}
           </main>
           {fileContent && selectedPath && (
-            <aside className="w-56 border-l border-border bg-card overflow-y-auto">
+            <aside className="w-56 border-l border-border bg-card/60 overflow-y-auto">
               <OutlinePanel content={fileContent} onClick={handleOutlineClick} />
             </aside>
           )}
@@ -244,64 +262,76 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
       {/* Obsidian 面板 */}
       {activeView === 'obsidian' && (
       <div className="flex-1 flex overflow-hidden">
-        <aside className="w-64 border-r border-border flex flex-col bg-card">
-          <div className="p-2 border-b border-border">
+        <aside className="w-64 border-r border-border flex flex-col bg-card/60">
+          <div className="px-3 py-2.5 border-b border-border space-y-2.5">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <BookOpen size={13} /> 文件浏览
+            </div>
             <div className="relative">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
               <input
                 type="text" value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="搜索笔记..."
-                className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-input bg-background text-xs
-                           focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="搜索笔记…"
+                className="w-full pl-8 pr-3 py-2 rounded-lg border border-input bg-background text-xs
+                           focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
               />
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="flex-1 overflow-y-auto p-1.5">
             {isSearching ? (
-              <div className="text-center text-muted-foreground py-4 text-xs">搜索中...</div>
+              <div className="flex items-center justify-center py-12 text-xs text-muted-foreground/50"><Loader2 size={14} className="animate-spin mr-1.5" />搜索中…</div>
             ) : searchResults.length > 0 ? (
               <div className="space-y-0.5">
+                <div className="px-2 py-1 text-[10px] text-muted-foreground/50 uppercase tracking-wider">搜索结果 · {searchResults.length} 条</div>
                 {searchResults.map((result) => (
                   <button
                     key={result.path}
                     onClick={() => { handleFileClick(result.path); setSearchResults([]); setSearchQuery(''); }}
-                    className="w-full flex items-start gap-2 px-2 py-2 rounded-lg hover:bg-muted text-left"
+                    className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-muted/60 text-left transition-colors"
                   >
-                    <FileText size={14} className="text-muted-foreground shrink-0 mt-0.5" />
+                    <FileText size={13} className="text-muted-foreground/60 shrink-0 mt-0.5" />
                     <div className="min-w-0">
-                      <div className="text-xs font-medium truncate">{result.title}</div>
-                      <div className="text-[10px] text-muted-foreground/60 truncate mt-0.5">{result.snippet}</div>
+                      <div className="text-[12px] font-medium truncate">{result.title}</div>
+                      <div className="text-[10px] text-muted-foreground/50 truncate mt-0.5 leading-relaxed">{result.snippet}</div>
                     </div>
                   </button>
                 ))}
               </div>
             ) : loading ? (
-              <div className="text-center text-muted-foreground py-4 text-xs">加载中...</div>
+              <div className="flex items-center justify-center py-12 text-xs text-muted-foreground/50"><Loader2 size={14} className="animate-spin mr-1.5" />加载中…</div>
             ) : (
               <FileTree nodes={tree} selectedPath={selectedPath} onFileClick={handleFileClick} />
             )}
           </div>
         </aside>
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto bg-background">
           {loadingContent ? (
-            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">加载中...</div>
+            <div className="flex items-center justify-center h-full">
+              <div className="flex flex-col items-center gap-2 text-muted-foreground/50">
+                <Loader2 size={20} className="animate-spin" />
+                <span className="text-xs">加载中…</span>
+              </div>
+            </div>
           ) : fileContent ? (
             <div className="max-w-[800px] mx-auto px-8 py-6">
               <MarkdownRenderer content={fileContent} onLinkClick={handleFileClick} />
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
+            <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <FileText size={48} className="mx-auto mb-4 opacity-20" />
-                <div className="text-sm">选择左侧文件查看内容</div>
+                <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-primary/10 flex items-center justify-center">
+                  <BookOpen size={26} className="text-primary/40" />
+                </div>
+                <div className="text-sm font-medium text-muted-foreground">选择左侧文件查看内容</div>
+                <div className="text-xs text-muted-foreground/40 mt-1">浏览 Obsidian 知识库中的笔记</div>
               </div>
             </div>
           )}
         </main>
         {fileContent && (
-          <aside className="w-56 border-l border-border bg-card overflow-y-auto">
+          <aside className="w-56 border-l border-border bg-card/60 overflow-y-auto">
             <OutlinePanel content={fileContent} onClick={handleOutlineClick} />
           </aside>
         )}

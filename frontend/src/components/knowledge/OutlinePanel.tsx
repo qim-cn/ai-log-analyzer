@@ -22,8 +22,9 @@ export function OutlinePanel({ content }: OutlinePanelProps) {
 
   if (headings.length === 0) {
     return (
-      <div className="p-4 text-center text-muted-foreground text-xs">
-        无大纲
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <List size={20} className="text-muted-foreground/15 mb-2" />
+        <div className="text-xs text-muted-foreground/40">无大纲</div>
       </div>
     );
   }
