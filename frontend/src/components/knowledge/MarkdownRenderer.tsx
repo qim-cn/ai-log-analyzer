@@ -42,14 +42,23 @@ export function MarkdownRenderer({ content, onLinkClick, onTagClick }: MarkdownR
 
       <div className="prose prose-sm dark:prose-invert max-w-none select-text
                     prose-headings:scroll-mt-20
-                    prose-h1:text-2xl prose-h1:font-bold prose-h1:mb-4
+                    prose-h1:text-2xl prose-h1:font-bold prose-h1:mb-4 prose-h1:pb-2 prose-h1:border-b prose-h1:border-border/50
                     prose-h2:text-xl prose-h2:font-semibold prose-h2:mt-8 prose-h2:mb-3
                     prose-h3:text-lg prose-h3:font-medium prose-h3:mt-6 prose-h3:mb-2
-                    prose-p:text-sm prose-p:leading-relaxed prose-p:my-3
-                    prose-code:text-sm prose-code:font-mono
-                    prose-pre:rounded-lg prose-pre:border prose-pre:border-border
-                    prose-table:text-sm
-                    prose-blockquote:border-l-2 prose-blockquote:border-primary/30 prose-blockquote:pl-3 prose-blockquote:italic
+                    prose-h4:text-base prose-h4:font-semibold prose-h4:mt-4 prose-h4:mb-2
+                    prose-p:text-[13px] prose-p:leading-7 prose-p:my-3
+                    prose-code:text-[13px] prose-code:font-mono prose-code:bg-muted/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
+                    prose-pre:rounded-lg prose-pre:border prose-pre:border-border prose-pre:shadow-sm
+                    prose-table:text-[13px] prose-table:w-full
+                    prose-th:px-3 prose-th:py-2 prose-th:bg-muted/60 prose-th:font-semibold prose-th:text-left prose-th:text-[12px]
+                    prose-td:px-3 prose-td:py-2 prose-td:border-t prose-td:border-border/50
+                    prose-blockquote:border-l-[3px] prose-blockquote:border-primary/30 prose-blockquote:pl-4 prose-blockquote:my-4 prose-blockquote:text-muted-foreground prose-blockquote:not-italic
+                    prose-li:text-[13px] prose-li:leading-7 prose-li:my-0.5
+                    prose-ul:my-3 prose-ol:my-3
+                    prose-hr:my-8 prose-hr:border-border/50
+                    prose-strong:text-foreground prose-strong:font-semibold
+                    prose-a:text-primary prose-a:no-underline hover:prose-a:underline
+                    prose-img:rounded-lg prose-img:border prose-img:border-border
                     ">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
