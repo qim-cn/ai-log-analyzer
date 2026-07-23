@@ -14,6 +14,7 @@
 
 import { useMemo, useState } from 'react';
 import { ArrowLeft, Check, CheckCircle2, ClipboardList, Loader2, Save } from 'lucide-react';
+import { CMD_PREFIX } from '@/utils/command';
 import { obsidianService } from '@/services/obsidianService';
 import { repairTemplateService, type RepairTemplate } from '@/services/repairTemplateService';
 import { cn } from '@/utils';
@@ -105,10 +106,44 @@ export function SaveToKnowledgeButton({ sessionId, disabled }: SaveToKnowledgeBu
     }
   };
 
+  /** 把命令文本中的命令行包裹成 \`\`\`command 代码块（相邻命令合一） */
+  const formatDebugCommands = (raw: string): string => {
+    if (!raw.trim()) return '(待补充)';
+    const lines = raw.split('\n');
+    const out: string[] = [];
+    let pending: string[] = [];
+    const flush = () => {
+      if (pending.length === 0) return;
+      out.push('```command');
+      out.push(...pending);
+      out.push('```');
+      pending = [];
+    };
+    for (const line of lines) {
+      if (CMD_PREFIX.test(line.trim()) && line.trim().length <= 300) {
+        pending.push(line);
+      } else {
+        flush();
+        out.push(line);
+      }
+    }
+    flush();
+    return out.join('\n');
+  };
+
+  /** 报错日志段包裹成 \`\`\`log 代码块 */
+  const formatLogBlock = (raw: string): string => {
+    const t = raw.trim();
+    if (!t) return '(无)';
+    // 已有代码块则不重复包裹
+    if (t.startsWith('```')) return t;
+    return '```log\n' + t + '\n```';
+  };
+
   const assembleBody = (repairOverride?: string) =>
     [
       '## 📋 测试报错日志',
-      d.log.trim() || '(无)',
+      formatLogBlock(d.log),
       '',
       '## 🎯 故障原因',
       d.cause.trim() || '(待补充)',
@@ -117,7 +152,7 @@ export function SaveToKnowledgeButton({ sessionId, disabled }: SaveToKnowledgeBu
       d.suggestion.trim() || '(待补充)',
       '',
       '## 🔧 DEBUG 诊断命令',
-      d.debug.trim() || '(待补充)',
+      formatDebugCommands(d.debug),
       '',
       '## 🔬 定位过程',
       d.process.trim() || '(待补充)',
