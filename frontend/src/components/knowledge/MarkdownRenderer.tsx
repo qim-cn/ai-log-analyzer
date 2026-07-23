@@ -20,6 +20,22 @@ interface MarkdownRendererProps {
 }
 
 /** 安全提取 React children 的纯文本 */
+/** 渲染文本中的【xxx】标记为徽章 */
+function renderWithBadges(text: string): React.ReactNode {
+  const parts = text.split(/(【[^】]+】)/g);
+  return parts.map((part, i) => {
+    if (/^【[^】]+】$/.test(part)) {
+      const label = part.slice(1, -1);
+      return (
+        <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-primary/10 text-primary align-middle mx-0.5 select-none">
+          {label}
+        </span>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
 function reactNodeToText(node: React.ReactNode): string {
   if (typeof node === 'string') return node;
   if (typeof node === 'number') return String(node);
@@ -34,8 +50,9 @@ export function MarkdownRenderer({ content, onLinkClick, onTagClick }: MarkdownR
   // 解析 Obsidian frontmatter
   const { frontmatter, body } = useMemo(() => parseFrontmatter(content), [content]);
 
-  // 预处理：自动识别命令行 + Obsidian 扩展语法
-  const withCommands = autoDetectCommands(body);
+  // 预处理：日志块包裹 → 命令行识别 → Obsidian 扩展语法
+  const withLogs = autoWrapLogBlocks(body);
+  const withCommands = autoDetectCommands(withLogs);
   const processed = preprocessObsidian(withCommands);
 
   return (
@@ -46,10 +63,10 @@ export function MarkdownRenderer({ content, onLinkClick, onTagClick }: MarkdownR
       <div className="prose prose-sm dark:prose-invert max-w-none select-text
                     prose-headings:scroll-mt-20
                     prose-h1:text-2xl prose-h1:font-bold prose-h1:mb-4 prose-h1:pb-2 prose-h1:border-b prose-h1:border-border/50
-                    prose-h2:text-xl prose-h2:font-semibold prose-h2:mt-8 prose-h2:mb-3 prose-h2:pt-3 prose-h2:border-t prose-h2:border-border/40
-                    prose-h3:text-lg prose-h3:font-medium prose-h3:mt-6 prose-h3:mb-2
-                    prose-h4:text-base prose-h4:font-semibold prose-h4:mt-4 prose-h4:mb-2
-                    prose-p:text-[13px] prose-p:leading-7 prose-p:my-3
+                    prose-h2:text-lg prose-h2:font-bold prose-h2:mt-10 prose-h2:mb-4 prose-h2:px-4 prose-h2:py-2.5 prose-h2:rounded-lg prose-h2:bg-muted/40 prose-h2:border prose-h2:border-border/60
+                    prose-h3:text-base prose-h3:font-semibold prose-h3:mt-6 prose-h3:mb-2 prose-h3:px-1
+                    prose-h4:text-sm prose-h4:font-semibold prose-h4:mt-4 prose-h4:mb-2
+                    prose-p:text-[13px] prose-p:leading-7 prose-p:my-2.5
                     prose-code:text-[13px] prose-code:font-mono prose-code:bg-muted/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
                     prose-pre:rounded-lg prose-pre:border prose-pre:border-border prose-pre:shadow-sm
                     prose-table:text-[13px] prose-table:w-full
@@ -79,6 +96,15 @@ export function MarkdownRenderer({ content, onLinkClick, onTagClick }: MarkdownR
             const text = reactNodeToText(children).replace(/[^a-zA-Z0-9一-鿿]/g, '-').slice(0, 50);
             return <h3 id={`heading-${text}`} className="scroll-mt-20" {...props}>{children}</h3>;
           },
+          // 段落 / 列表项：检测【xxx】标记渲染为徽章
+          p({ children, ...props }) {
+            const text = reactNodeToText(children);
+            return <p {...props}>{renderWithBadges(text)}</p>;
+          },
+          li({ children, ...props }) {
+            const text = reactNodeToText(children);
+            return <li {...props}>{renderWithBadges(text)}</li>;
+          },
           // 代码块
           code({ className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || '');
@@ -88,6 +114,9 @@ export function MarkdownRenderer({ content, onLinkClick, onTagClick }: MarkdownR
             if (match) {
               if (language === 'command') {
                 return <CommandWindow code={codeString} />;
+              }
+              if (language === 'log') {
+                return <LogBlock code={codeString} />;
               }
               return <CodeBlock language={language} code={codeString} />;
             }
@@ -166,6 +195,49 @@ export function MarkdownRenderer({ content, onLinkClick, onTagClick }: MarkdownR
 // ============================================================
 // 预处理 Obsidian 语法
 // ============================================================
+
+/** 日志行模式：时间戳 + 错误关键词 */
+const LOG_PATTERN = /(?:^\d{6}-\d{2}:\d{2}:\d{2}\s|^\d{4}[-/]\d{2}[-/]\d{2}[T ]\d{2}:\d{2}|ERR\*|FAIL\s|EXC\*\*|TESTE\s|ERROR\s|WARNING\s|CRITICAL|FATAL|PANIC)/;
+
+/** 检测连续日志行并包裹成 ```log 代码块（阈值 ≥3 行） */
+function autoWrapLogBlocks(content: string): string {
+  const MIN_LOG_LINES = 3;
+  const lines = content.split('\n');
+  const out: string[] = [];
+  let inFence = false;
+  let pending: string[] = [];
+
+  const flush = () => {
+    if (pending.length >= MIN_LOG_LINES) {
+      out.push('```log');
+      out.push(...pending);
+      out.push('```');
+    } else {
+      out.push(...pending);
+    }
+    pending = [];
+  };
+
+  for (const line of lines) {
+    if (line.trim().startsWith('```')) {
+      flush();
+      inFence = !inFence;
+      out.push(line);
+      continue;
+    }
+    if (inFence) { out.push(line); continue; }
+    // 空行分隔日志块
+    if (!line.trim()) { flush(); out.push(line); continue; }
+    if (LOG_PATTERN.test(line.trim())) {
+      pending.push(line);
+    } else {
+      flush();
+      out.push(line);
+    }
+  }
+  flush();
+  return out.join('\n');
+}
 
 /** 自动识别 shell 命令行并包裹成代码块（仅处理不在 fence 内的行） */
 function autoDetectCommands(content: string): string {
@@ -280,6 +352,37 @@ function CodeBlock({ language, code }: CodeBlockProps) {
       >
         {code}
       </SyntaxHighlighter>
+    </div>
+  );
+}
+
+// ============================================================
+// 日志块组件（自动识别的大段报错日志）
+// ============================================================
+
+function LogBlock({ code }: { code: string }) {
+  const [collapsed, setCollapsed] = useState(code.split('\n').length > 15);
+  const displayCode = collapsed ? code.split('\n').slice(0, 15).join('\n') + '\n…' : code;
+
+  return (
+    <div className="relative my-3 rounded-lg overflow-hidden border border-border bg-[#0d1117] shadow-sm">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30 text-[11px] text-muted-foreground border-b border-border/50">
+        <span className="flex items-center gap-1.5 font-medium">
+          <AlertTriangle size={12} className="text-warning/70" />
+          报错日志
+          <span className="text-muted-foreground/50 font-normal">({code.split('\n').length} 行)</span>
+        </span>
+        <div className="flex items-center gap-2">
+          {code.split('\n').length > 15 && (
+            <button onClick={() => setCollapsed(!collapsed)} className="hover:text-foreground transition-colors text-[10px]">
+              {collapsed ? '展开全部' : '收起'}
+            </button>
+          )}
+        </div>
+      </div>
+      <pre className="px-3 py-2 overflow-x-auto text-[11px] font-mono text-red-300/80 leading-relaxed whitespace-pre-wrap m-0">
+        {displayCode}
+      </pre>
     </div>
   );
 }
