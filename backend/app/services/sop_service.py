@@ -1,7 +1,7 @@
 """
 维修 SOP 自动生成 —— 3 步流水线
 
-1. 知识检索：并行查 4 个数据源（已解决案例/维修模板/Linux 命令/历史会话）
+1. 知识检索：顺序查 4 个数据源（已解决案例/维修模板/Linux 命令/历史会话）
 2. 证据聚合：去重 + 排序 + 截断
 3. LLM 合成：流式生成结构化 SOP + 兜底模板
 """
@@ -9,7 +9,7 @@
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 
 from app.models.message import MessageRole
 from app.services.message_service import message_service
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 STEP_TIMEOUT = 20       # 单步超时（秒）
 TOTAL_TIMEOUT = 60      # 整体超时（秒）
 
-STEPS: list[tuple[int, str, Callable]] = [
+STEPS: list[tuple[int, str, str]] = [
     (1, "知识检索", "_run_knowledge_search"),
     (2, "证据聚合", "_run_aggregation"),
 ]
@@ -128,7 +128,7 @@ class SopService:
             raw_sessions = session_repository.list_all(model=model, limit=20)
             sessions = [
                 {"title": s.title, "status": s.status}
-                for s in raw_sessions[:EVIDENCE_LIMIT["history_sessions"]] if s.id != results.get("_exclude_session_id")
+                for s in raw_sessions[:EVIDENCE_LIMIT["history_sessions"]]
             ]
         except Exception as e:
             logger.warning(f"历史会话查询失败: {e}")
@@ -196,13 +196,18 @@ class SopService:
             full_report = self._build_fallback_sop(results)
             yield {"type": "report_chunk", "content": full_report}
 
-        message = message_service.create_message(
-            session_id=session_id,
-            role=MessageRole.ASSISTANT,
-            content=full_report,
-        )
-        yield {"type": "step_done", "step": 3, "status": "ok", "summary": "SOP 已生成"}
-        yield {"type": "done", "message_id": message.id}
+        try:
+            message = message_service.create_message(
+                session_id=session_id,
+                role=MessageRole.ASSISTANT,
+                content=full_report,
+            )
+            yield {"type": "step_done", "step": 3, "status": "ok", "summary": "SOP 已生成"}
+            yield {"type": "done", "message_id": message.id}
+        except Exception as e:
+            logger.exception(f"SOP 消息保存失败: {e}")
+            yield {"type": "error", "message": "SOP 已生成但保存失败"}
+            yield {"type": "done"}
 
     def _build_sop_prompt(self, results) -> list[dict]:
         """构建 SOP 合成 prompt"""
