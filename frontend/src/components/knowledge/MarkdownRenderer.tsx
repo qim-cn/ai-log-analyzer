@@ -10,6 +10,8 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Check, Info, AlertTriangle, AlertCircle, Lightbulb, Tag, Folder, Calendar, Hash, FileText, ArrowUpRight } from 'lucide-react';
 import { useState, useCallback, useMemo } from 'react';
 import { cn } from '@/utils';
+import { isCommandLike } from '@/utils/command';
+import { CommandWindow } from '@/components/ui/CommandWindow';
 
 interface MarkdownRendererProps {
   content: string;
@@ -32,8 +34,9 @@ export function MarkdownRenderer({ content, onLinkClick, onTagClick }: MarkdownR
   // 解析 Obsidian frontmatter
   const { frontmatter, body } = useMemo(() => parseFrontmatter(content), [content]);
 
-  // 预处理：Obsidian 扩展语法
-  const processed = preprocessObsidian(body);
+  // 预处理：自动识别命令行 + Obsidian 扩展语法
+  const withCommands = autoDetectCommands(body);
+  const processed = preprocessObsidian(withCommands);
 
   return (
     <div>
@@ -43,7 +46,7 @@ export function MarkdownRenderer({ content, onLinkClick, onTagClick }: MarkdownR
       <div className="prose prose-sm dark:prose-invert max-w-none select-text
                     prose-headings:scroll-mt-20
                     prose-h1:text-2xl prose-h1:font-bold prose-h1:mb-4 prose-h1:pb-2 prose-h1:border-b prose-h1:border-border/50
-                    prose-h2:text-xl prose-h2:font-semibold prose-h2:mt-8 prose-h2:mb-3
+                    prose-h2:text-xl prose-h2:font-semibold prose-h2:mt-8 prose-h2:mb-3 prose-h2:pt-3 prose-h2:border-t prose-h2:border-border/40
                     prose-h3:text-lg prose-h3:font-medium prose-h3:mt-6 prose-h3:mb-2
                     prose-h4:text-base prose-h4:font-semibold prose-h4:mt-4 prose-h4:mb-2
                     prose-p:text-[13px] prose-p:leading-7 prose-p:my-3
@@ -83,6 +86,9 @@ export function MarkdownRenderer({ content, onLinkClick, onTagClick }: MarkdownR
             const codeString = String(children).replace(/\n$/, '');
 
             if (match) {
+              if (language === 'command') {
+                return <CommandWindow code={codeString} />;
+              }
               return <CodeBlock language={language} code={codeString} />;
             }
 
@@ -160,6 +166,43 @@ export function MarkdownRenderer({ content, onLinkClick, onTagClick }: MarkdownR
 // ============================================================
 // 预处理 Obsidian 语法
 // ============================================================
+
+/** 自动识别 shell 命令行并包裹成代码块（仅处理不在 fence 内的行） */
+function autoDetectCommands(content: string): string {
+  const lines = content.split('\n');
+  const out: string[] = [];
+  let inFence = false;
+  let pending: string[] = [];
+
+  const flushPending = () => {
+    if (pending.length === 0) return;
+    out.push('```command');
+    out.push(...pending);
+    out.push('```');
+    pending = [];
+  };
+
+  for (const line of lines) {
+    if (line.trim().startsWith('```')) {
+      flushPending();
+      inFence = !inFence;
+      out.push(line);
+      continue;
+    }
+    if (inFence) {
+      out.push(line);
+      continue;
+    }
+    if (isCommandLike(line)) {
+      pending.push(line);
+    } else {
+      flushPending();
+      out.push(line);
+    }
+  }
+  flushPending();
+  return out.join('\n');
+}
 
 function preprocessObsidian(content: string): string {
   let processed = content;
