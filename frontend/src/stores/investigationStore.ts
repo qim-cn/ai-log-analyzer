@@ -7,6 +7,7 @@
 
 import { create } from 'zustand';
 import { agentService } from '@/services/agentService';
+import { sopService } from '@/services/sopService';
 import { useChatStore } from './chatStore';
 
 export interface StepState {
@@ -26,6 +27,7 @@ interface InvestigationState {
   error: string | null;
 
   start: (sessionId: string) => Promise<void>;
+  startSOP: (model: string, fault: string, sessionId: string) => Promise<void>;
   cancel: () => void;
   close: () => void;
 }
@@ -116,6 +118,44 @@ export const useInvestigationStore = create<InvestigationState>((set, get) => ({
           /* 刷新失败不影响排查结果展示 */
         });
     }
+  },
+
+  startSOP: async (model, fault, sessionId) => {
+    controller?.abort();
+    controller = new AbortController();
+    const signal = controller.signal;
+
+    set({ active: true, running: true, sessionId, steps: [], report: '', error: null });
+
+    const updateStep = (num: number, patch: Partial<StepState>) =>
+      set((s) => ({ steps: s.steps.map((st) => (st.step === num ? { ...st, ...patch } : st)) }));
+
+    const appendStepMessage = (num: number, message: string) =>
+      set((s) => ({ steps: s.steps.map((st) => (st.step === num ? { ...st, messages: [...st.messages, message] } : st)) }));
+
+    try {
+      for await (const event of sopService.generate(model, fault, signal)) {
+        switch (event.type) {
+          case 'step_start':
+            set((s) => ({ steps: [...s.steps, { step: event.step!, title: event.title || '', status: 'running', messages: [] }] }));
+            break;
+          case 'step_progress': appendStepMessage(event.step!, event.message || ''); break;
+          case 'step_done': updateStep(event.step!, { status: event.status || 'ok', summary: event.summary }); break;
+          case 'report_chunk': set((s) => ({ report: s.report + (event.content || '') })); break;
+          case 'error': set({ error: event.message || 'SOP 生成失败' }); break;
+          case 'done': break;
+        }
+      }
+    } catch (err: unknown) {
+      const aborted = (err as { name?: string })?.name === 'AbortError';
+      set({ running: false });
+      if (aborted) return;
+      set({ error: (err as Error)?.message || '连接失败' });
+      return;
+    }
+    set({ running: false });
+    const sid = get().sessionId;
+    if (sid) { useChatStore.getState().fetchMessages(sid).catch(() => {}); }
   },
 
   cancel: () => {

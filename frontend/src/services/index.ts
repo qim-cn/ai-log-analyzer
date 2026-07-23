@@ -7,3 +7,4 @@ export * from './settingsService';
 export * from './authService';
 export * from './obsidianService';
 export * from './agentService';
+export * from './sopService';
