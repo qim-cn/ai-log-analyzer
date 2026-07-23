@@ -46,6 +46,7 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
   const [showCompare, setShowCompare] = useState(false);
   const investActive = useInvestigationStore((s) => s.active);
   const startInvestigation = useInvestigationStore((s) => s.start);
+  const startSOP = useInvestigationStore((s) => s.startSOP);
 
   useEffect(() => {
     // 切换会话时取消上一个会话仍在进行的流式回复，避免旧 chunk 串到新会话
@@ -64,6 +65,17 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
     if (content.trim() === '/investigate') {
       if (logFiles.length > 0 && !streaming) {
         await startInvestigation(sessionId);
+      }
+      return;
+    }
+    // /sop 命令：生成维修 SOP
+    if (content.trim().startsWith('/sop ')) {
+      const parts = content.trim().slice(5).trim();
+      const spaceIdx = parts.indexOf(' ');
+      const model = spaceIdx > 0 ? parts.slice(0, spaceIdx).trim() : parts.trim();
+      const fault = spaceIdx > 0 ? parts.slice(spaceIdx + 1).trim() : '';
+      if (model && fault && !streaming) {
+        await startSOP(model, fault, sessionId);
       }
       return;
     }
