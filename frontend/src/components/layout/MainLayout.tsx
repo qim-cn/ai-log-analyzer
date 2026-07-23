@@ -123,8 +123,13 @@ export function MainLayout({ currentUser, onLogout, onOpenUsers, onOpenKnowledge
             </div>
           </aside>
 
+          {/* 键盘跳转：允许跳过侧栏直接到主内容 */}
+          <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-lg focus:no-underline">
+            跳到主内容
+          </a>
+
           {/* 中间对话区 */}
-          <main className="flex-1 min-w-0">
+          <main id="main-content" className="flex-1 min-w-0">
             {currentSessionId ? (
               <ChatPanel sessionId={currentSessionId} />
             ) : (

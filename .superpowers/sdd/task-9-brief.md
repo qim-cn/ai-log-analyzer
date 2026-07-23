@@ -1,3 +1,17 @@
+### Task 9: InvestigationView 组件
+
+**Files:**
+- Create: `frontend/src/components/agent/InvestigationView.tsx`
+
+**Interfaces:**
+- Consumes: `useInvestigationStore`（Task 8）：`steps/report/running/error/cancel/close`；`MarkdownRenderer`（`@/components/knowledge/MarkdownRenderer`，props `{ content: string }`）；lucide-react 图标（0.378 版本含 `Microscope/Loader2/CheckCircle2/XCircle/SkipForward/ChevronDown/ChevronUp/X`）
+- Produces: `InvestigationView` 组件（无 props，直接从 store 读状态）
+
+- [ ] **Step 1: 创建组件**
+
+创建 `frontend/src/components/agent/InvestigationView.tsx`：
+
+```tsx
 /**
  * AI Agent 自主排查视图
  * 上半部分：步骤时间线（可折叠卡片，状态图标 + 进度消息）
@@ -17,6 +31,7 @@ import {
 } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/knowledge/MarkdownRenderer';
 import { useInvestigationStore, type StepState } from '@/stores/investigationStore';
+import { cn } from '@/utils';
 
 function StepIcon({ status }: { status: StepState['status'] }) {
   if (status === 'running') {
@@ -107,7 +122,7 @@ export function InvestigationView() {
 
         {/* 流式报告 */}
         {report && (
-          <div className="border border-border rounded-lg bg-card p-3">
+          <div className="border border-border rounded-lg bg-card p-4">
             <MarkdownRenderer content={report} />
             {running && (
               <span className="inline-block w-2 h-4 bg-primary/70 animate-pulse ml-0.5" />
@@ -118,3 +133,20 @@ export function InvestigationView() {
     </div>
   );
 }
+```
+
+- [ ] **Step 2: 构建验证**
+
+Run: `cd /home/qim/code/ai-log-analyzer/frontend && npm run build`
+Expected: 构建通过
+
+- [ ] **Step 3: 提交**
+
+```bash
+cd /home/qim/code/ai-log-analyzer
+git add frontend/src/components/agent/InvestigationView.tsx
+git commit -m "feat: 自主排查步骤时间线与报告视图组件"
+```
+
+---
+

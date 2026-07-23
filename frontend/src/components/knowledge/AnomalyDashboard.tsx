@@ -122,7 +122,7 @@ export const AnomalyDashboard: React.FC<AnomalyDashboardProps> = ({ sessionId })
 
       {/* 异常列表 */}
       {anomalies && 'anomalies' in anomalies && anomalies.anomalies.length > 0 && (
-        <div className="border border-border rounded-lg p-4">
+        <div className="border border-border rounded-lg p-3">
           <h3 className="text-sm font-medium mb-3">异常点列表</h3>
           <div className="space-y-2">
             {anomalies.anomalies.map((anomaly, index) => (
@@ -160,7 +160,7 @@ export const AnomalyDashboard: React.FC<AnomalyDashboardProps> = ({ sessionId })
 
       {/* 趋势预测 */}
       {trends && 'trend' in trends && trends.trend.predictions.length > 0 && (
-        <div className="border border-border rounded-lg p-4">
+        <div className="border border-border rounded-lg p-3">
           <h3 className="text-sm font-medium mb-3">趋势预测</h3>
           <div className="space-y-2">
             {trends.trend.predictions.map((pred, index) => (
@@ -180,7 +180,7 @@ export const AnomalyDashboard: React.FC<AnomalyDashboardProps> = ({ sessionId })
 
       {/* 容量分析 */}
       {trends && 'capacity' in trends && trends.capacity.recommendations.length > 0 && (
-        <div className="border border-border rounded-lg p-4">
+        <div className="border border-border rounded-lg p-3">
           <h3 className="text-sm font-medium mb-3">容量建议</h3>
           <div className="space-y-2">
             {trends.capacity.recommendations.map((rec, index) => (
@@ -203,7 +203,7 @@ export const AnomalyDashboard: React.FC<AnomalyDashboardProps> = ({ sessionId })
 
       {/* 瓶颈预警 */}
       {trends && 'bottlenecks' in trends && trends.bottlenecks.warnings.length > 0 && (
-        <div className="border border-border rounded-lg p-4">
+        <div className="border border-border rounded-lg p-3">
           <h3 className="text-sm font-medium mb-3">瓶颈预警</h3>
           <div className="space-y-2">
             {trends.bottlenecks.warnings.map((warning, index) => (
@@ -229,7 +229,7 @@ export const AnomalyDashboard: React.FC<AnomalyDashboardProps> = ({ sessionId })
 
       {/* 全局趋势统计 */}
       {trends && 'daily_trend' in trends && trends.daily_trend.length > 0 && (
-        <div className="border border-border rounded-lg p-4">
+        <div className="border border-border rounded-lg p-3">
           <h3 className="text-sm font-medium mb-3">每日错误趋势</h3>
           <div className="h-48 flex items-end gap-1">
             {trends.daily_trend.map((day, index) => {
@@ -266,7 +266,7 @@ const StatCard: React.FC<{
   icon: React.ReactNode;
   description: string;
 }> = ({ title, value, icon, description }) => (
-  <div className="border border-border rounded-lg p-4">
+  <div className="border border-border rounded-lg p-3">
     <div className="flex items-center justify-between">
       <span className="text-sm text-muted-foreground">{title}</span>
       {icon}

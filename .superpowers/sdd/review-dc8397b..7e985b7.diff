@@ -1,0 +1,271 @@
+# Review package: dc8397b..7e985b7
+
+## Commits
+7e985b7 feat: 自主排查 SSE 路由与注册
+
+## Files changed
+ backend/app/main.py                |   2 +
+ backend/app/routes/agent_routes.py |  77 +++++++++++++++++++++++
+ backend/tests/test_agent_routes.py | 122 +++++++++++++++++++++++++++++++++++++
+ 3 files changed, 201 insertions(+)
+
+## Diff
+diff --git a/backend/app/main.py b/backend/app/main.py
+index e4b035b..81f7529 100644
+--- a/backend/app/main.py
++++ b/backend/app/main.py
+@@ -164,20 +164,21 @@ async def rate_limit_middleware(request: Request, call_next):
+ 
+ 
+ # 注册错误处理器
+ register_error_handlers(app)
+ 
+ 
+ # ============================================================
+ # 路由注册
+ # ============================================================
+ 
++from app.routes.agent_routes import router as agent_router
+ from app.routes.anomaly_routes import router as anomaly_router
+ from app.routes.error_cluster_routes import router as error_cluster_router
+ from app.routes.repair_template_routes import router as repair_template_router
+ from app.routes.auth_routes import router as auth_router
+ from app.routes.audit_routes import router as audit_router
+ from app.routes.chat_routes import router as chat_router
+ from app.routes.cicd_routes import router as cicd_router
+ from app.routes.compare_routes import router as compare_router
+ from app.routes.export_routes import router as export_router
+ from app.routes.knowledge_routes import router as knowledge_router
+@@ -185,20 +186,21 @@ from app.routes.log_routes import router as log_router
+ from app.routes.message_routes import router as message_router
+ from app.routes.obsidian_routes import router as obsidian_router
+ from app.routes.rule_routes import router as rule_router
+ from app.routes.session_routes import router as session_router
+ from app.routes.settings_routes import router as settings_router
+ from app.routes.template_routes import router as template_router
+ from app.routes.timeline_routes import router as timeline_router
+ from app.routes.user_routes import router as user_router
+ from app.routes.webhook_routes import router as webhook_router
+ 
++app.include_router(agent_router, prefix="/api/agent", tags=["AI 自主排查"])
+ app.include_router(anomaly_router, prefix="/api/anomaly", tags=["异常检测"])
+ app.include_router(repair_template_router, prefix="/api/repair-templates", tags=["维修模板"])
+ app.include_router(auth_router, prefix="/api/auth", tags=["认证"])
+ app.include_router(user_router, prefix="/api/users", tags=["用户管理"])
+ app.include_router(session_router, prefix="/api/sessions", tags=["会话管理"])
+ app.include_router(message_router, prefix="/api/messages", tags=["消息管理"])
+ app.include_router(log_router, prefix="/api/logs", tags=["日志管理"])
+ app.include_router(compare_router, prefix="/api/logs", tags=["日志对比"])
+ app.include_router(error_cluster_router, prefix="/api/logs", tags=["错误聚类"])
+ app.include_router(chat_router, prefix="/api/chat", tags=["AI 对话"])
+diff --git a/backend/app/routes/agent_routes.py b/backend/app/routes/agent_routes.py
+new file mode 100644
+index 0000000..0491626
+--- /dev/null
++++ b/backend/app/routes/agent_routes.py
+@@ -0,0 +1,77 @@
++"""
++AI Agent 自主排查路由
++
++POST /api/agent/investigate -- 启动固定流水线排查，SSE 流式返回过程与报告。
++归属校验/限流复用现有中间件；SSE 事件格式与 chat 路由一致。
++"""
++
++import json
++import logging
++
++from fastapi import APIRouter, Request
++from fastapi.responses import StreamingResponse
++
++from app.middlewares.error_handler import ValidationError
++from app.repositories.log_repository import log_repository
++from app.services.agent_service import agent_service
++from app.services.log_service import log_service
++from app.types.agent_types import InvestigateRequest
++from app.utils.auth import require_log_owner, require_session_owner
++
++logger = logging.getLogger(__name__)
++
++router = APIRouter()
++
++
++@router.post("/investigate")
++async def investigate(body: InvestigateRequest, request: Request):
++    """
++    启动自主排查
++
++    Body 二选一：
++    - session_id：对指定会话排查（聊天中"深入调查"入口）
++    - log_id：对该日志所属会话排查（上传后"深度排查"入口）
++    """
++    user = request.state.user
++
++    if not body.session_id and not body.log_id:
++        raise ValidationError("session_id 与 log_id 必须提供一个")
++
++    if body.session_id:
++        require_session_owner(body.session_id, user)
++        session_id = body.session_id
++    else:
++        require_log_owner(body.log_id, user)
++        lf = log_repository.get_by_id(body.log_id)
++        session_id = lf.session_id
++
++    if not log_service.get_logs_by_session(session_id):
++        raise ValidationError("该会话还没有日志文件，请先上传日志")
++
++    if agent_service.is_active(user.id):
++        raise ValidationError("已有排查进行中，请稍后再试")
++
++    async def generate():
++        try:
++            async for event in agent_service.investigate(session_id, user.id):
++                yield _sse_event(event)
++        except Exception as e:
++            logger.exception(f"自主排查异常: {e}")
++            yield _sse_event({"type": "error", "message": "排查服务异常，请稍后重试"})
++            yield _sse_event({"type": "done"})
++
++    return StreamingResponse(
++        generate(),
++        media_type="text/event-stream",
++        headers={
++            "Cache-Control": "no-cache",
++            "Connection": "keep-alive",
++            "X-Accel-Buffering": "no",
++            "Access-Control-Allow-Origin": "*",
++        },
++    )
++
++
++def _sse_event(data: dict) -> str:
++    """格式化 SSE 事件"""
++    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+diff --git a/backend/tests/test_agent_routes.py b/backend/tests/test_agent_routes.py
+new file mode 100644
+index 0000000..7960781
+--- /dev/null
++++ b/backend/tests/test_agent_routes.py
+@@ -0,0 +1,122 @@
++"""
++agent_routes 路由单元测试
++
++无路由测试基建（无 TestClient/JWT fixture），按现有测试风格
++直接调用 handler：fake request + monkeypatch 归属校验与服务。
++"""
++
++from types import SimpleNamespace
++
++import pytest
++from fastapi.responses import StreamingResponse
++
++from app.middlewares.error_handler import ValidationError
++from app.routes import agent_routes
++from app.routes.agent_routes import investigate
++from app.types.agent_types import InvestigateRequest
++
++
++def _request():
++    return SimpleNamespace(
++        state=SimpleNamespace(user=SimpleNamespace(id="u1", role="admin"))
++    )
++
++
++def _patch_happy(monkeypatch, events):
++    """打通 handler 的所有外部依赖"""
++    monkeypatch.setattr(agent_routes, "require_session_owner", lambda sid, user: None)
++    monkeypatch.setattr(agent_routes, "require_log_owner", lambda lid, user: None)
++    monkeypatch.setattr(
++        agent_routes,
++        "log_repository",
++        SimpleNamespace(get_by_id=lambda lid: SimpleNamespace(session_id="sess-1")),
++    )
++    monkeypatch.setattr(
++        agent_routes,
++        "log_service",
++        SimpleNamespace(get_logs_by_session=lambda sid: [object()]),
++    )
++
++    class _FakeAgent:
++        def is_active(self, user_id):
++            return False
++
++        def investigate(self, session_id, user_id):
++            async def gen():
++                for e in events:
++                    yield e
++            return gen()
++
++    monkeypatch.setattr(agent_routes, "agent_service", _FakeAgent())
++
++
++async def test_investigate_requires_one_id():
++    with pytest.raises(ValidationError, match="必须提供一个"):
++        await investigate(InvestigateRequest(), _request())
++
++
++async def test_investigate_rejects_when_active(monkeypatch):
++    _patch_happy(monkeypatch, [])
++    monkeypatch.setattr(
++        agent_routes,
++        "agent_service",
++        SimpleNamespace(is_active=lambda uid: True),
++    )
++    with pytest.raises(ValidationError, match="已有排查进行中"):
++        await investigate(InvestigateRequest(session_id="sess-1"), _request())
++
++
++async def test_investigate_rejects_without_logs(monkeypatch):
++    _patch_happy(monkeypatch, [])
++    monkeypatch.setattr(
++        agent_routes,
++        "log_service",
++        SimpleNamespace(get_logs_by_session=lambda sid: []),
++    )
++    with pytest.raises(ValidationError, match="还没有日志文件"):
++        await investigate(InvestigateRequest(session_id="sess-1"), _request())
++
++
++async def test_investigate_streams_sse_by_session_id(monkeypatch):
++    _patch_happy(monkeypatch, [
++        {"type": "step_start", "step": 1, "title": "错误定位"},
++        {"type": "done", "message_id": "msg-1"},
++    ])
++
++    resp = await investigate(InvestigateRequest(session_id="sess-1"), _request())
++
++    assert isinstance(resp, StreamingResponse)
++    chunks = [c async for c in resp.body_iterator]
++    text = "".join(chunks)
++    assert text.startswith("data: ")
++    assert '"step_start"' in text
++    assert '"done"' in text
++    assert text.endswith("\n\n")
++
++
++async def test_investigate_accepts_log_id(monkeypatch):
++    """log_id 入口：复用日志所属会话"""
++    used = {}
++
++    _patch_happy(monkeypatch, [{"type": "done", "message_id": "msg-1"}])
++
++    class _RecordingAgent:
++        def is_active(self, user_id):
++            return False
++
++        def investigate(self, session_id, user_id):
++            used["session_id"] = session_id
++
++            async def gen():
++                yield {"type": "done", "message_id": "msg-1"}
++            return gen()
++
++    monkeypatch.setattr(agent_routes, "agent_service", _RecordingAgent())
++
++    resp = await investigate(InvestigateRequest(log_id="log-9"), _request())
++
++    assert isinstance(resp, StreamingResponse)
++    # generate() 是惰性异步生成器，需消费 body_iterator 才会触发
++    # agent_service.investigate() 调用并记录 session_id
++    _ = [c async for c in resp.body_iterator]
++    assert used["session_id"] == "sess-1"   # 来自 fake log_repository

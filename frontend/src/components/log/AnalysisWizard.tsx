@@ -333,7 +333,7 @@ export const AnalysisWizard: React.FC<AnalysisWizardProps> = ({
       )}
 
       {/* 内容 */}
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-auto p-3">
         <p className="text-sm text-muted-foreground mb-4">
           {currentStep.description}
         </p>

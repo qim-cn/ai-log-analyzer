@@ -16,7 +16,7 @@
     --secondary-foreground: 224 71% 4%;
     --muted: 220 14% 96%;
     --muted-foreground: 220 9% 46%;
-    --accent: 189 94% 43%;
+    --accent: 142 70% 45%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
@@ -29,7 +29,7 @@
   }
 
   .dark {
-    --background: 229 30% 7%;
+    --background: 229 30% 6%;
     --foreground: 210 40% 96%;
     --card: 229 25% 9%;
     --card-foreground: 210 40% 96%;
@@ -38,10 +38,10 @@
     --secondary: 228 20% 14%;
     --secondary-foreground: 210 40% 96%;
     --muted: 228 20% 14%;
-    --muted-foreground: 217 20% 55%;
-    --accent: 189 94% 43%;
+    --muted-foreground: 217 20% 65%;
+    --accent: 142 70% 45%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 0 62% 30%;
+    --destructive: 0 72% 50%;
     --destructive-foreground: 0 0% 100%;
     --border: 228 18% 14%;
     --input: 228 18% 14%;
@@ -60,6 +60,9 @@
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+  button, [role="button"], select, summary {
+    cursor: pointer;
   }
   code, pre, .font-mono {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
@@ -193,4 +196,13 @@
 
 .animate-thinking-dot {
   animation: thinking-dot 1.4s ease-in-out infinite;
+}
+
+/* Accessibility: respect OS reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

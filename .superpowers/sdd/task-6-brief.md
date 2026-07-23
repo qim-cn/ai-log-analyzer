@@ -1,0 +1,351 @@
+### Task 6: agent_service 流水线 runner
+
+**Files:**
+- Create: `backend/app/services/agent_service.py`
+- Test: `backend/tests/test_agent_service.py`
+
+**Interfaces:**
+- Consumes: Task 1-5 的全部步骤函数与构建器；`log_service.get_logs_by_session(session_id) -> list[LogFile]`；`session_service.get_session(session_id) -> Session`；`message_service.get_recent_messages(session_id, limit=10) -> list[Message]` 和 `message_service.create_message(session_id, role, content) -> Message`；`ai_service.chat_stream(messages, temperature) -> AsyncIterator[str]`
+- Produces: `agent_service` 单例：`is_active(user_id: str) -> bool`；`investigate(session_id: str, user_id: str) -> AsyncIterator[dict]`（yield SSE 事件 dict：`step_start/step_progress/step_done/report_chunk/done/error`）；模块常量 `STEPS: list[tuple[int, str, Callable]]`、`STEP_TIMEOUT = 30`、`TOTAL_TIMEOUT = 180`
+
+- [ ] **Step 1: 写失败测试**
+
+创建 `backend/tests/test_agent_service.py`：
+
+```python
+"""
+agent_service 流水线 runner 单元测试
+"""
+
+import sys
+from types import SimpleNamespace
+
+import pytest
+
+from app.services import agent_service as agent_module
+from app.services.agent_service import AgentService
+from app.services.agent_steps import InvestigationContext, StepResult
+
+
+def _ctx() -> InvestigationContext:
+    return InvestigationContext(session_id="sess-1", logs=[], session_model="7500S")
+
+
+def _patch_common(monkeypatch, ai):
+    """假上下文构建 + 假 AI + 假消息服务"""
+    monkeypatch.setattr(AgentService, "_build_context", lambda self, sid: _ctx())
+    monkeypatch.setitem(
+        sys.modules, "app.services.ai_service", SimpleNamespace(ai_service=ai)
+    )
+    saved: list[str] = []
+    monkeypatch.setattr(
+        agent_module,
+        "message_service",
+        SimpleNamespace(
+            create_message=lambda session_id, role, content: saved.append(content)
+            or SimpleNamespace(id="msg-1")
+        ),
+    )
+    return saved
+
+
+class _OkAI:
+    def chat_stream(self, messages, temperature=0.7):
+        async def gen():
+            yield "## 🎯 故障部件定位\n内存条 A2"
+        return gen()
+
+
+class _FailAI:
+    def chat_stream(self, messages, temperature=0.7):
+        async def gen():
+            raise RuntimeError("AI down")
+            yield  # pragma: no cover  # 使其成为 async generator
+        return gen()
+
+
+async def _ok_step(ctx, emit):
+    emit("进度消息")
+    return StepResult(status="ok", summary="完成")
+
+
+async def _boom_step(ctx, emit):
+    raise RuntimeError("step exploded")
+
+
+async def _collect(service: AgentService) -> list[dict]:
+    return [e async for e in service.investigate("sess-1", "u1")]
+
+
+async def test_pipeline_event_sequence(monkeypatch):
+    saved = _patch_common(monkeypatch, _OkAI())
+    monkeypatch.setattr(agent_module, "STEPS", [(1, "步骤一", _ok_step), (2, "步骤二", _ok_step)])
+    service = AgentService()
+
+    events = await _collect(service)
+
+    types = [e["type"] for e in events]
+    # 两个步骤各 start/done 一次，进度消息在 start 之后
+    assert types[0] == "step_start"
+    assert "step_progress" in types
+    assert types.count("step_start") == 3      # 2 个证据步骤 + 报告步骤
+    assert types.count("step_done") == 3
+    assert "report_chunk" in types
+    assert types[-1] == "done"
+    # 报告落库为 assistant 消息
+    assert saved and "自主排查报告" in saved[0]
+    # 并发锁已释放
+    assert not service.is_active("u1")
+
+
+async def test_pipeline_step_failure_isolated(monkeypatch):
+    saved = _patch_common(monkeypatch, _OkAI())
+    monkeypatch.setattr(agent_module, "STEPS", [(1, "爆炸步骤", _boom_step), (2, "步骤二", _ok_step)])
+    service = AgentService()
+
+    events = await _collect(service)
+
+    failed = [e for e in events if e["type"] == "step_done" and e["status"] == "failed"]
+    assert len(failed) == 1 and failed[0]["step"] == 1
+    # 后续步骤照常执行
+    ok_done = [e for e in events if e["type"] == "step_done" and e["step"] == 2]
+    assert ok_done and ok_done[0]["status"] == "ok"
+    assert events[-1]["type"] == "done"
+    assert not service.is_active("u1")
+
+
+async def test_pipeline_ai_failure_fallback_report(monkeypatch):
+    saved = _patch_common(monkeypatch, _FailAI())
+    monkeypatch.setattr(agent_module, "STEPS", [(1, "步骤一", _ok_step)])
+    service = AgentService()
+
+    events = await _collect(service)
+
+    report_text = "".join(e.get("content", "") for e in events if e["type"] == "report_chunk")
+    assert "本地兜底" in report_text
+    assert events[-1]["type"] == "done"
+    assert saved and "本地兜底" in saved[0]
+
+
+async def test_pipeline_concurrent_user_rejected(monkeypatch):
+    _patch_common(monkeypatch, _OkAI())
+    monkeypatch.setattr(agent_module, "STEPS", [(1, "步骤一", _ok_step)])
+    service = AgentService()
+    service._active_users.add("u1")
+
+    events = await _collect(service)
+
+    assert events == [{"type": "error", "message": "已有排查进行中，请稍后再试"}]
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `cd /home/qim/code/ai-log-analyzer/backend && python -m pytest tests/test_agent_service.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'app.services.agent_service'`
+
+- [ ] **Step 3: 实现流水线 runner**
+
+创建 `backend/app/services/agent_service.py`：
+
+```python
+"""
+AI Agent 自主排查 —— 固定流水线 runner
+
+按预定顺序执行排查步骤，通过 asyncio.Queue 把步骤内的进度事件
+实时转发给调用方（SSE 路由）。设计原则：
+- 单步失败不中断流水线（step_done status=failed，继续后续步骤）
+- AI 不可用时用兜底模板生成报告
+- 每用户同时最多 1 个排查（内存锁）
+"""
+
+import asyncio
+import logging
+import time
+from collections.abc import AsyncIterator, Callable
+
+from app.models.message import MessageRole
+from app.services.agent_steps import (
+    InvestigationContext,
+    StepResult,
+    build_fallback_report,
+    build_report_prompt,
+    run_batch_pattern,
+    run_error_extraction,
+    run_knowledge_lookup,
+    run_similar_cases,
+)
+from app.services.log_service import log_service
+from app.services.message_service import message_service
+
+logger = logging.getLogger(__name__)
+
+STEP_TIMEOUT = 30       # 单步超时（秒）
+TOTAL_TIMEOUT = 180     # 整体超时（秒）
+
+# (步骤号, 中文标题, 步骤函数)；报告生成是特殊的最后一步，不在此表
+STEPS: list[tuple[int, str, Callable]] = [
+    (1, "错误定位", run_error_extraction),
+    (2, "相似案例检索", run_similar_cases),
+    (3, "同批次模式检测", run_batch_pattern),
+    (4, "知识库与维修模板", run_knowledge_lookup),
+]
+
+
+class AgentService:
+    """自主排查服务（固定流水线）"""
+
+    def __init__(self) -> None:
+        self._active_users: set[str] = set()
+
+    def is_active(self, user_id: str) -> bool:
+        return user_id in self._active_users
+
+    async def investigate(
+        self, session_id: str, user_id: str
+    ) -> AsyncIterator[dict]:
+        """执行排查流水线，逐步 yield SSE 事件 dict"""
+        if user_id in self._active_users:
+            yield {"type": "error", "message": "已有排查进行中，请稍后再试"}
+            return
+        self._active_users.add(user_id)
+        started = time.monotonic()
+        try:
+            ctx = self._build_context(session_id)
+            for num, title, step_fn in STEPS:
+                if time.monotonic() - started > TOTAL_TIMEOUT:
+                    yield {"type": "error", "message": "排查整体超时，已终止"}
+                    return
+                async for event in self._run_step(ctx, num, title, step_fn):
+                    yield event
+            async for event in self._generate_report(ctx):
+                yield event
+        finally:
+            self._active_users.discard(user_id)
+
+    def _build_context(self, session_id: str) -> InvestigationContext:
+        """收集流水线输入：会话日志、机型、已有对话上下文"""
+        from app.services.session_service import session_service
+
+        logs = log_service.get_logs_by_session(session_id)
+        session = session_service.get_session(session_id)
+        recent = message_service.get_recent_messages(session_id, limit=10)
+        history_text = "\n".join(
+            f"{'用户' if m.role == MessageRole.USER else 'AI'}: {m.content[:300]}"
+            for m in recent
+        )
+        return InvestigationContext(
+            session_id=session_id,
+            logs=logs,
+            session_model=session.model,
+            history_text=history_text,
+        )
+
+    async def _call_step(self, step_fn, ctx, emit) -> StepResult:
+        """调用单个步骤，统一兜底异常与超时"""
+        try:
+            return await asyncio.wait_for(step_fn(ctx, emit), timeout=STEP_TIMEOUT)
+        except asyncio.TimeoutError:
+            logger.warning(f"排查步骤超时: {step_fn.__name__}")
+            return StepResult(
+                status="failed", summary=f"步骤超时（>{STEP_TIMEOUT}s）", error="timeout"
+            )
+        except Exception as e:
+            logger.exception(f"排查步骤失败: {step_fn.__name__}: {e}")
+            return StepResult(
+                status="failed", summary=f"步骤失败: {str(e)[:80]}", error=str(e)[:200]
+            )
+
+    async def _run_step(self, ctx, num, title, step_fn) -> AsyncIterator[dict]:
+        """运行单个步骤并实时转发其进度事件"""
+        yield {"type": "step_start", "step": num, "title": title}
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def emit(message: str) -> None:
+            queue.put_nowait({"type": "step_progress", "step": num, "message": message})
+
+        task = asyncio.create_task(self._call_step(step_fn, ctx, emit))
+        try:
+            while not task.done():
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=0.05)
+                    yield event
+                except asyncio.TimeoutError:
+                    continue
+            while not queue.empty():
+                yield queue.get_nowait()
+            result = task.result()
+        except BaseException:
+            # 客户端断开（GeneratorExit/CancelledError）：取消步骤任务并向上传播
+            task.cancel()
+            raise
+        yield {
+            "type": "step_done",
+            "step": num,
+            "status": result.status,
+            "summary": result.summary,
+        }
+
+    async def _generate_report(self, ctx) -> AsyncIterator[dict]:
+        """步骤 5：LLM 流式生成根因报告；失败/空回复降级为兜底报告"""
+        from app.services.ai_service import ai_service
+
+        yield {"type": "step_start", "step": 5, "title": "根因报告生成"}
+        messages = build_report_prompt(ctx)
+        full_report = ""
+        got_content = False
+        stream = None
+        try:
+            stream = ai_service.chat_stream(messages, temperature=0.3)
+            async for chunk in stream:
+                if not got_content:
+                    got_content = True
+                    header = "🔬 **自主排查报告**\n\n"
+                    full_report += header
+                    yield {"type": "report_chunk", "content": header}
+                full_report += chunk
+                yield {"type": "report_chunk", "content": chunk}
+        except Exception as e:
+            logger.warning(f"AI 报告流失败: {e}")
+            if stream is not None:
+                try:
+                    await stream.aclose()
+                except Exception:
+                    pass
+            if got_content:
+                note = "\n\n> ⚠️ AI 生成中断，报告不完整"
+                full_report += note
+                yield {"type": "report_chunk", "content": note}
+
+        if not full_report.strip():
+            full_report = build_fallback_report(ctx)
+            yield {"type": "report_chunk", "content": full_report}
+
+        # 报告存为会话消息：保存知识库/导出/历史回看零改动直接可用
+        message = message_service.create_message(
+            session_id=ctx.session_id,
+            role=MessageRole.ASSISTANT,
+            content=full_report,
+        )
+        yield {"type": "step_done", "step": 5, "status": "ok", "summary": "报告已生成"}
+        yield {"type": "done", "message_id": message.id}
+
+
+# 全局单例
+agent_service = AgentService()
+```
+
+- [ ] **Step 4: 运行测试确认通过**
+
+Run: `cd /home/qim/code/ai-log-analyzer/backend && python -m pytest tests/test_agent_service.py -v`
+Expected: 4 passed
+
+- [ ] **Step 5: 提交**
+
+```bash
+cd /home/qim/code/ai-log-analyzer
+git add backend/app/services/agent_service.py backend/tests/test_agent_service.py
+git commit -m "feat: 自主排查流水线 runner"
+```
+
+---
+

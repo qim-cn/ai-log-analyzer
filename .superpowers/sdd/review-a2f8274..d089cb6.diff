@@ -1,0 +1,239 @@
+# Review package: a2f8274..d089cb6
+
+## Commits
+d089cb6 feat: 聊天面板与日志面板接入自主排查入口
+
+## Files changed
+ frontend/src/components/chat/ChatPanel.tsx | 27 +++++++++++++++++++++++++--
+ frontend/src/components/log/LogPanel.tsx   | 16 ++++++++++++++--
+ 2 files changed, 39 insertions(+), 4 deletions(-)
+
+## Diff
+diff --git a/frontend/src/components/chat/ChatPanel.tsx b/frontend/src/components/chat/ChatPanel.tsx
+index 91e8e19..25b1651 100644
+--- a/frontend/src/components/chat/ChatPanel.tsx
++++ b/frontend/src/components/chat/ChatPanel.tsx
+@@ -1,24 +1,26 @@
+ /**
+  * 聊天面板组件
+  * 集成日志上传、消息列表、输入框
+  */
+ 
+ import React, { useEffect, useRef, useCallback, useState } from 'react';
+-import { Copy, Check, Paperclip, FileText, GitCompareArrows } from 'lucide-react';
++import { Copy, Check, Paperclip, FileText, GitCompareArrows, Microscope } from 'lucide-react';
+ import { MessageBubble } from './MessageBubble';
+ import { SaveToKnowledgeButton } from './SaveToKnowledgeButton';
+ import { AnomalyBanner } from './AnomalyBanner';
+ import { ThinkingBubble } from './ThinkingBubble';
+ import { ChatInput } from './ChatInput';
+ import { ExportButton } from '@/components/export/ExportButton';
+ import { ComparePanel } from '@/components/compare/ComparePanel';
++import { InvestigationView } from '@/components/agent/InvestigationView';
++import { useInvestigationStore } from '@/stores/investigationStore';
+ import { useChatStore, useSessionStore, useLogStore, useQuickPromptStore } from '@/stores';
+ import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE } from '@/constants';
+ import { cn, formatFileSize, analyzeUploadedLog } from '@/utils';
+ 
+ interface ChatPanelProps {
+   sessionId: string;
+ }
+ 
+ export function ChatPanel({ sessionId }: ChatPanelProps) {
+   const {
+@@ -35,34 +37,43 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
+   } = useChatStore();
+ 
+   const { logFiles, fetchLogs, uploadLog, uploading } = useLogStore();
+ 
+   const quickPrompts = useQuickPromptStore((s) => s.prompts);
+ 
+   const sessions = useSessionStore((s) => s.sessions);
+   const currentSession = sessions.find((s) => s.id === sessionId);
+   const messagesEndRef = useRef<HTMLDivElement>(null);
+   const [showCompare, setShowCompare] = useState(false);
++  const investActive = useInvestigationStore((s) => s.active);
++  const startInvestigation = useInvestigationStore((s) => s.start);
+ 
+   useEffect(() => {
+     // 切换会话时取消上一个会话仍在进行的流式回复，避免旧 chunk 串到新会话
+     abortStreaming();
+     clearMessages();
+     fetchMessages(sessionId);
+     fetchLogs(sessionId);
+   }, [sessionId, fetchMessages, clearMessages, fetchLogs, abortStreaming]);
+ 
+   useEffect(() => {
+     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+   }, [messages, streamingContent]);
+ 
+   const handleSend = async (content: string) => {
++    // /investigate 命令：触发 AI 自主排查
++    if (content.trim() === '/investigate') {
++      if (logFiles.length > 0 && !streaming) {
++        await startInvestigation(sessionId);
++      }
++      return;
++    }
+     try {
+       await sendMessage(sessionId, content);
+     } catch (error) {
+       console.error('发送失败:', error);
+     }
+   };
+ 
+   // 文件上传
+   const handleFileUpload = useCallback(async () => {
+     const input = document.createElement('input');
+@@ -115,38 +126,49 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
+         <div className="flex items-center gap-1">
+           <button
+             onClick={handleCopyLast}
+             disabled={messages.length === 0}
+             className="p-1.5 hover:bg-muted rounded-lg transition-colors disabled:opacity-30"
+             title="复制最后一条回复"
+           >
+             {copied ? <Check size={15} className="text-success" /> : <Copy size={15} />}
+           </button>
+           <ExportButton sessionId={sessionId} />
++          <button
++            onClick={() => startInvestigation(sessionId)}
++            disabled={logFiles.length === 0 || streaming}
++            className="p-1.5 hover:bg-muted rounded-lg transition-colors disabled:opacity-30"
++            title="AI 自主排查"
++          >
++            <Microscope size={15} />
++          </button>
+           {logFiles.length >= 2 && (
+             <button
+               onClick={() => setShowCompare(!showCompare)}
+               className={cn(
+                 'p-1.5 hover:bg-muted rounded-lg transition-colors',
+                 showCompare && 'bg-primary/10 text-primary'
+               )}
+               title="日志对比"
+             >
+               <GitCompareArrows size={15} />
+             </button>
+           )}
+         </div>
+       </div>
+ 
+       <AnomalyBanner sessionId={sessionId} />
+ 
+-      {/* Messages */}
++      {/* Messages / 自主排查视图 */}
++      {investActive ? (
++        <InvestigationView />
++      ) : (
+       <div className="flex-1 overflow-y-auto">
+         {loading && messages.length === 0 ? (
+           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+             加载中...
+           </div>
+         ) : messages.length === 0 ? (
+           <div className="flex items-center justify-center h-full">
+             <div className="text-center animate-fade-in max-w-md mx-4">
+               <div className="w-14 h-14 mx-auto mb-4 bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl flex items-center justify-center">
+                 <span className="text-2xl">💬</span>
+@@ -177,20 +199,21 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
+                   created_at: new Date().toISOString(),
+                 }}
+                 isStreaming
+               />
+             )}
+ 
+             <div ref={messagesEndRef} />
+           </div>
+         )}
+       </div>
++      )}
+ 
+       {/* 已上传文件条 */}
+       {logFiles.length > 0 && (
+         <div className="px-4 py-2 border-t border-border bg-muted/30 flex items-center gap-2 overflow-x-auto">
+           <FileText size={13} className="text-muted-foreground shrink-0" />
+           {logFiles.map((f) => (
+             <span
+               key={f.id}
+               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-xs text-muted-foreground whitespace-nowrap"
+             >
+diff --git a/frontend/src/components/log/LogPanel.tsx b/frontend/src/components/log/LogPanel.tsx
+index e8d25f5..da6cde9 100644
+--- a/frontend/src/components/log/LogPanel.tsx
++++ b/frontend/src/components/log/LogPanel.tsx
+@@ -3,36 +3,39 @@
+  * 显示当前会话关联的日志文件列表，点击查看内容
+  * 支持点击行追加引用、右键分析选中内容
+  * 显示日志统计、脱敏映射入口、错误聚类、相似历史日志
+  */
+ 
+ import { useEffect, useCallback, useState } from 'react';
+ import {
+   FileText,
+   ChevronDown,
+   ChevronUp,
++  Microscope,
+ } from 'lucide-react';
+ import { LogUploader } from './LogUploader';
+ import { LogFileList } from './LogFileList';
+ import { LogViewer } from './LogViewer';
+ import { LogStats } from './LogStats';
+ import { ErrorClusterPanel } from './ErrorClusterPanel';
+ import { MaskingMapButton } from './MaskingMapButton';
+ import { SimilarLogsPanel } from './SimilarLogsPanel';
+ import { useLogStore, useChatStore } from '@/stores';
++import { useInvestigationStore } from '@/stores/investigationStore';
+ 
+ interface LogPanelProps {
+   sessionId: string;
+ }
+ 
+ export function LogPanel({ sessionId }: LogPanelProps) {
+   const [showSimilar, setShowSimilar] = useState(false);
++  const startInvestigation = useInvestigationStore((s) => s.start);
+ 
+   const {
+     logFiles,
+     selectedLogId,
+     selectedLogContent,
+     fetchLogs,
+     deleteLog,
+     selectLog,
+   } = useLogStore();
+ 
+@@ -75,23 +78,32 @@ export function LogPanel({ sessionId }: LogPanelProps) {
+             <span className="font-medium text-sm">日志分析</span>
+             <span className="text-xs text-muted-foreground">
+               {logFiles.length} 个文件
+             </span>
+           </div>
+         </div>
+       </div>
+ 
+       {/* Content */}
+       <>
+-          {/* Upload */}
+-          <div className="p-3 border-b border-border">
++          {/* Upload + 深度排查入口 */}
++          <div className="p-3 border-b border-border space-y-2">
+             <LogUploader sessionId={sessionId} />
++            {logFiles.length > 0 && (
++              <button
++                onClick={() => startInvestigation(sessionId)}
++                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
++              >
++                <Microscope size={13} />
++                深度排查
++              </button>
++            )}
+           </div>
+ 
+           {/* File List or Viewer */}
+           {selectedLogId && selectedLogContent ? (
+             <LogViewer
+               content={selectedLogContent}
+               filename={selectedFile?.filename || ''}
+               onClose={() => selectLog(null)}
+               onLineClick={handleLineClick}
+               onAnalyzeSelection={handleAnalyzeSelection}

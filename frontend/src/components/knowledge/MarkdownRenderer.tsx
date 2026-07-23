@@ -252,7 +252,7 @@ function Callout({ type, children }: CalloutProps) {
   const Icon = config.icon;
 
   return (
-    <div className={cn('rounded-lg border-l-4 p-4 my-3', config.color)}>
+    <div className={cn('rounded-lg border-l-4 p-3 my-3', config.color)}>
       <div className="flex items-center gap-2 font-medium text-sm mb-2">
         <Icon size={16} />
         <span>{config.title}</span>
