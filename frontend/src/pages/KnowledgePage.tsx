@@ -7,12 +7,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Search, FileText, Folder, FolderOpen, ChevronRight, ChevronDown,
-  RefreshCw, Terminal, CheckCircle2, Trash2, BookOpen, Loader2,
+  RefreshCw, Terminal, CheckCircle2, Trash2, BookOpen, Loader2, ClipboardList,
 } from 'lucide-react';
 import { obsidianService, type FileTreeNode, type ResolvedFile } from '@/services/obsidianService';
 import { MarkdownRenderer } from '@/components/knowledge/MarkdownRenderer';
 import { OutlinePanel } from '@/components/knowledge/OutlinePanel';
 import { LinuxKnowledgePanel } from '@/components/knowledge/LinuxKnowledgePanel';
+import { useInvestigationStore } from '@/stores/investigationStore';
 import { cn } from '@/utils';
 
 interface KnowledgePageProps {
@@ -30,6 +31,10 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ path: string; title: string; snippet: string }[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [sopOpen, setSopOpen] = useState(false);
+  const [sopModel, setSopModel] = useState('');
+  const [sopFault, setSopFault] = useState('');
+  const startSOP = useInvestigationStore((s) => s.startSOP);
 
   // 已解决列表
   const [resolvedFiles, setResolvedFiles] = useState<ResolvedFile[]>([]);
@@ -170,10 +175,55 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
         </div>
 
         <div className="flex-1" />
+        <button
+          onClick={() => setSopOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+        >
+          <ClipboardList size={13} /> 生成 SOP
+        </button>
         <button onClick={refreshAll} className="p-1.5 hover:bg-muted rounded-lg transition-colors" title="刷新">
           <RefreshCw size={15} className="text-muted-foreground" />
         </button>
       </div>
+
+      {/* SOP 生成弹窗 */}
+      {sopOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSopOpen(false)} />
+          <div className="relative bg-card border border-border rounded-2xl shadow-lg w-full max-w-md mx-4 p-5 space-y-4">
+            <h3 className="font-semibold text-sm">生成维修 SOP</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">机型</label>
+                <input value={sopModel} onChange={e => setSopModel(e.target.value)}
+                  placeholder="如 7500S" list="model-suggestions"
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">故障描述</label>
+                <input value={sopFault} onChange={e => setSopFault(e.target.value)}
+                  placeholder="如 内存ECC"
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={() => setSopOpen(false)}
+                className="px-4 py-2 rounded-xl text-sm font-medium bg-muted text-muted-foreground hover:bg-muted/80">取消</button>
+              <button
+                onClick={() => {
+                  if (sopModel.trim() && sopFault.trim()) {
+                    startSOP(sopModel.trim(), sopFault.trim(), '');
+                    setSopOpen(false);
+                  }
+                }}
+                disabled={!sopModel.trim() || !sopFault.trim()}
+                className="px-4 py-2 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                生成
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Linux 面板全屏 */}
       {activeView === 'linux' && (
