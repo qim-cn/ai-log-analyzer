@@ -128,22 +128,50 @@ export const useInvestigationStore = create<InvestigationState>((set, get) => ({
     set({ active: true, running: true, sessionId, steps: [], report: '', error: null });
 
     const updateStep = (num: number, patch: Partial<StepState>) =>
-      set((s) => ({ steps: s.steps.map((st) => (st.step === num ? { ...st, ...patch } : st)) }));
+      set((s) => ({
+        steps: s.steps.map((st) => (st.step === num ? { ...st, ...patch } : st)),
+      }));
 
     const appendStepMessage = (num: number, message: string) =>
-      set((s) => ({ steps: s.steps.map((st) => (st.step === num ? { ...st, messages: [...st.messages, message] } : st)) }));
+      set((s) => ({
+        steps: s.steps.map((st) =>
+          st.step === num ? { ...st, messages: [...st.messages, message] } : st
+        ),
+      }));
 
     try {
       for await (const event of sopService.generate(model, fault, signal)) {
         switch (event.type) {
           case 'step_start':
-            set((s) => ({ steps: [...s.steps, { step: event.step!, title: event.title || '', status: 'running', messages: [] }] }));
+            set((s) => ({
+              steps: [
+                ...s.steps,
+                {
+                  step: event.step!,
+                  title: event.title || '',
+                  status: 'running',
+                  messages: [],
+                },
+              ],
+            }));
             break;
-          case 'step_progress': appendStepMessage(event.step!, event.message || ''); break;
-          case 'step_done': updateStep(event.step!, { status: event.status || 'ok', summary: event.summary }); break;
-          case 'report_chunk': set((s) => ({ report: s.report + (event.content || '') })); break;
-          case 'error': set({ error: event.message || 'SOP 生成失败' }); break;
-          case 'done': break;
+          case 'step_progress':
+            appendStepMessage(event.step!, event.message || '');
+            break;
+          case 'step_done':
+            updateStep(event.step!, {
+              status: event.status || 'ok',
+              summary: event.summary,
+            });
+            break;
+          case 'report_chunk':
+            set((s) => ({ report: s.report + (event.content || '') }));
+            break;
+          case 'error':
+            set({ error: event.message || 'SOP 生成失败' });
+            break;
+          case 'done':
+            break;
         }
       }
     } catch (err: unknown) {
@@ -153,9 +181,20 @@ export const useInvestigationStore = create<InvestigationState>((set, get) => ({
       set({ error: (err as Error)?.message || '连接失败' });
       return;
     }
+
+    // 流正常结束（done 或 error 事件都可能）
     set({ running: false });
+
+    // SOP 报告已落库为 assistant 消息：刷新消息列表，聊天历史里能看到
     const sid = get().sessionId;
-    if (sid) { useChatStore.getState().fetchMessages(sid).catch(() => {}); }
+    if (sid) {
+      useChatStore
+        .getState()
+        .fetchMessages(sid)
+        .catch(() => {
+          /* 刷新失败不影响排查结果展示 */
+        });
+    }
   },
 
   cancel: () => {
