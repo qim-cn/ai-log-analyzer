@@ -17,7 +17,7 @@ from app.config.database import get_connection
 logger = logging.getLogger(__name__)
 
 # 匹配「## ...维修操作...」标题段，到下一个 ## 标题或结尾
-SECTION_RE = re.compile(r'## .*维修操作.*\n(.*?)(?=\n## |\Z)', re.DOTALL)
+SECTION_RE = re.compile(r'## [^\n]*维修操作[^\n]*\n(.*?)(?=\n## |\Z)', re.DOTALL)
 MODEL_RE = re.compile(r'^model:\s*(.+)$', re.MULTILINE)
 
 

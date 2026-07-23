@@ -90,7 +90,10 @@ def test_rebuild_scans_configured_path(monkeypatch):
     from app.services.repair_template_service import repair_template_service
 
     fake = FakeConn()
-    monkeypatch.setattr("app.config.database.get_connection", lambda: fake)
+    # get_connection 在 repair_template_service 模块级 import，需直接替换模块内的绑定
+    monkeypatch.setattr(
+        "app.services.repair_template_service.get_connection", lambda: fake
+    )
 
     with tempfile.TemporaryDirectory() as tmp:
         sub = Path(tmp) / "cases"
@@ -99,8 +102,9 @@ def test_rebuild_scans_configured_path(monkeypatch):
             "model: DELL-7500\n\n## 维修操作\n- 更换内存\n",
             encoding="utf-8",
         )
+        # get_resolved_base 是在 rebuild() 内通过函数级 import 从 obsidian_service 引入的
         monkeypatch.setattr(
-            "app.services.repair_template_service.get_resolved_base",
+            "app.services.obsidian_service.get_resolved_base",
             lambda: sub,
         )
         count = repair_template_service.rebuild()
