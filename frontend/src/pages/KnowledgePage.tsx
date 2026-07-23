@@ -112,6 +112,19 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
     element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
+  // 点击标签：触发搜索（已解决搜索列表 / Obsidian 搜索笔记）
+  // 点击标签：跳转到 Obsidian 搜索相关笔记
+  const handleTagClick = useCallback(async (tag: string) => {
+    setActiveView('obsidian');
+    setSearchQuery(tag);
+    setIsSearching(true);
+    try {
+      const data = await obsidianService.search(tag);
+      setSearchResults(data.results);
+    } catch (err) { console.error('搜索失败:', err); }
+    finally { setIsSearching(false); }
+  }, []);
+
   const isAdmin = localStorage.getItem('user') ? (() => { try { return JSON.parse(localStorage.getItem('user') || '{}').role === 'admin'; } catch { return false; } })() : false;
 
   const handleDeleteResolved = async (filename: string) => {
@@ -237,7 +250,7 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
               </div>
             ) : fileContent && selectedPath ? (
               <div className="max-w-[800px] mx-auto px-8 py-6">
-                <MarkdownRenderer content={fileContent} onLinkClick={handleFileClick} />
+                <MarkdownRenderer content={fileContent} onLinkClick={handleFileClick} onTagClick={handleTagClick} />
               </div>
             ) : (
               <div className="flex items-center justify-center h-full">
@@ -316,7 +329,7 @@ export function KnowledgePage({ onBack, initialPath }: KnowledgePageProps) {
             </div>
           ) : fileContent ? (
             <div className="max-w-[800px] mx-auto px-8 py-6">
-              <MarkdownRenderer content={fileContent} onLinkClick={handleFileClick} />
+              <MarkdownRenderer content={fileContent} onLinkClick={handleFileClick} onTagClick={handleTagClick} />
             </div>
           ) : (
             <div className="flex items-center justify-center h-full">

@@ -14,6 +14,7 @@ import { cn } from '@/utils';
 interface MarkdownRendererProps {
   content: string;
   onLinkClick?: (path: string) => void;
+  onTagClick?: (tag: string) => void;
 }
 
 /** 安全提取 React children 的纯文本 */
@@ -27,7 +28,7 @@ function reactNodeToText(node: React.ReactNode): string {
   return '';
 }
 
-export function MarkdownRenderer({ content, onLinkClick }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, onLinkClick, onTagClick }: MarkdownRendererProps) {
   // 解析 Obsidian frontmatter
   const { frontmatter, body } = useMemo(() => parseFrontmatter(content), [content]);
 
@@ -37,7 +38,7 @@ export function MarkdownRenderer({ content, onLinkClick }: MarkdownRendererProps
   return (
     <div>
       {/* Frontmatter 属性卡片 */}
-      <FrontmatterCard frontmatter={frontmatter} />
+      <FrontmatterCard frontmatter={frontmatter} onTagClick={onTagClick} />
 
       <div className="prose prose-sm dark:prose-invert max-w-none select-text
                     prose-headings:scroll-mt-20
@@ -360,7 +361,7 @@ function parseFrontmatter(content: string): { frontmatter: Frontmatter; body: st
 }
 
 /** Obsidian 风格属性卡片 */
-function FrontmatterCard({ frontmatter }: { frontmatter: Frontmatter }) {
+function FrontmatterCard({ frontmatter, onTagClick }: { frontmatter: Frontmatter; onTagClick?: (tag: string) => void }) {
   const hasContent = Object.keys(frontmatter).filter(k => frontmatter[k as keyof Frontmatter] != null && frontmatter[k as keyof Frontmatter] !== '').length > 0;
   if (!hasContent) return null;
 
@@ -428,12 +429,24 @@ function FrontmatterCard({ frontmatter }: { frontmatter: Frontmatter }) {
         <div className="px-5 py-2.5 border-t border-border/50 flex items-center gap-2 flex-wrap">
           <Tag size={12} className="text-primary/50 shrink-0" />
           {tags.map(tag => (
-            <span
-              key={tag}
-              className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
-            >
-              {tag}
-            </span>
+            onTagClick ? (
+              <button
+                key={tag}
+                onClick={() => onTagClick(tag)}
+                className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium
+                           hover:bg-primary/20 hover:shadow-sm active:scale-95 transition-all cursor-pointer"
+                title={`搜索标签: ${tag}`}
+              >
+                {tag}
+              </button>
+            ) : (
+              <span
+                key={tag}
+                className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
+              >
+                {tag}
+              </span>
+            )
           ))}
         </div>
       )}
