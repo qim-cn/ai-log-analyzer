@@ -10,7 +10,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Check, Info, AlertTriangle, AlertCircle, Lightbulb, Tag, Folder, Calendar, Hash, FileText, ArrowUpRight } from 'lucide-react';
 import { useState, useCallback, useMemo } from 'react';
 import { cn } from '@/utils';
-import { isCommandLike } from '@/utils/command';
+import { CMD_PREFIX } from '@/utils/command';
 import { CommandWindow } from '@/components/ui/CommandWindow';
 
 interface MarkdownRendererProps {
@@ -193,7 +193,8 @@ function autoDetectCommands(content: string): string {
       out.push(line);
       continue;
     }
-    if (isCommandLike(line)) {
+    // 仅用命令前缀匹配（不用 isCommandLike 的管道/路径检查，避免日志行误判）
+    if (CMD_PREFIX.test(line.trim()) && line.trim().length <= 300) {
       pending.push(line);
     } else {
       flushPending();
