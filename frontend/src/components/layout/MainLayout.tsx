@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { LogOut, Users, BookOpen, LayoutDashboard } from 'lucide-react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
+import { CreateSessionDialog } from './CreateSessionDialog';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { ConversationCommandsPanel } from '@/components/chat/ConversationCommandsPanel';
 import { LinuxKnowledgePanel } from '@/components/knowledge/LinuxKnowledgePanel';
@@ -168,7 +169,7 @@ export function MainLayout({ currentUser, onLogout, onOpenUsers, onOpenKnowledge
 }
 
 function EmptyState() {
-  const createSession = useSessionStore((s) => s.createSession);
+  const [showCreate, setShowCreate] = useState(false);
 
   return (
     <div className="h-full flex items-center justify-center">
@@ -181,13 +182,19 @@ function EmptyState() {
           创建一个新对话，上传日志文件，AI 帮你分析
         </div>
         <button
-          onClick={() => createSession()}
+          onClick={() => setShowCreate(true)}
           className="px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium
                      hover:shadow-glow active:scale-95 transition-all"
         >
           新建对话
         </button>
       </div>
+
+      {/* 新建会话弹窗（共享组件，与 Sidebar 共用） */}
+      <CreateSessionDialog
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+      />
     </div>
   );
 }

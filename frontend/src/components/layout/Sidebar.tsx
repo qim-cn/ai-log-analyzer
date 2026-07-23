@@ -9,7 +9,7 @@ import { MessageSquarePlus, Trash2, MessageSquare, Search } from 'lucide-react';
 import { useSessionStore } from '@/stores';
 import { cn, formatTime } from '@/utils';
 import { MODEL_SUGGESTIONS } from '@/constants';
-import { Modal } from '@/components/ui/Modal';
+import { CreateSessionDialog } from './CreateSessionDialog';
 
 interface SidebarProps {
   className?: string;
@@ -22,7 +22,6 @@ export function Sidebar({ className, onClose }: SidebarProps) {
     currentSessionId,
     loading,
     fetchSessions,
-    createSession,
     deleteSession,
     setCurrentSession,
   } = useSessionStore();
@@ -32,8 +31,6 @@ export function Sidebar({ className, onClose }: SidebarProps) {
   const [searchQ, setSearchQ] = useState('');
 
   const [showCreate, setShowCreate] = useState(false);
-  const [newModel, setNewModel] = useState('');
-  const [newSn, setNewSn] = useState('');
 
   useEffect(() => {
     fetchSessions();
@@ -51,14 +48,6 @@ export function Sidebar({ className, onClose }: SidebarProps) {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterModel, filterStatus, searchQ]);
-
-  const handleCreate = async () => {
-    await createSession(undefined, newModel.trim() || undefined, newSn.trim() || undefined);
-    setShowCreate(false);
-    setNewModel('');
-    setNewSn('');
-    onClose?.();
-  };
 
   const handleSelect = (id: string) => {
     setCurrentSession(id);
@@ -173,53 +162,13 @@ export function Sidebar({ className, onClose }: SidebarProps) {
         )}
       </div>
 
-      {/* 新建会话弹窗 */}
-      <Modal
+      {/* 新建会话弹窗（共享组件，与 MainLayout EmptyState 共用） */}
+      <CreateSessionDialog
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        title="新建对话"
-        subtitle="可选填机型/SN，便于筛选和追溯"
-        footer={
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setShowCreate(false)}
-              className="px-4 py-2 rounded-xl text-sm font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
-            >
-              取消
-            </button>
-            <button
-              onClick={handleCreate}
-              className="px-4 py-2 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:shadow-glow active:scale-95 transition-all"
-            >
-              创建
-            </button>
-          </div>
-        }
-      >
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">机型</label>
-            <input
-              list="model-suggestions"
-              value={newModel}
-              onChange={(e) => setNewModel(e.target.value)}
-              placeholder="如 7500S（可自定义）"
-              className="w-full px-2.5 py-1.5 rounded-lg border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">机器 SN</label>
-            <input
-              value={newSn}
-              onChange={(e) => setNewSn(e.target.value)}
-              placeholder="可选"
-              className="w-full px-2.5 py-1.5 rounded-lg border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-          </div>
-        </div>
-      </Modal>
+      />
 
-      {/* 机型建议（datalist，供筛选与新建两处 input 共用） */}
+      {/* 机型建议（datalist，供筛选 input 与弹窗内机型 input 共用） */}
       <datalist id="model-suggestions">
         {MODEL_SUGGESTIONS.map((m) => (
           <option key={m} value={m} />
